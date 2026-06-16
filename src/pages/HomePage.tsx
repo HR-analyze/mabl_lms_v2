@@ -106,7 +106,7 @@ export default function HomePage() {
 
               <div className="relative flex items-center justify-center bg-neft p-12">
                 <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
-                <Crest className="relative h-28 w-28" onDark />
+                <Crest className="relative h-36 w-36" />
               </div>
             </div>
           </div>
