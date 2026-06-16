@@ -31,11 +31,11 @@ export default {
         },
       },
       fontFamily: {
-        // TT Rationalist — фирменный шрифт. Source Serif 4 — близкий бесплатный
-        // fallback с кириллицей, пока не подключены лицензионные файлы
-        // (см. public/fonts/README.md).
-        serif: ['"TT Rationalist"', '"Source Serif 4"', 'Georgia', '"Times New Roman"', 'serif'],
-        sans: ['"TT Rationalist"', '"Source Serif 4"', 'Georgia', 'serif'],
+        // TT Rationalist — фирменный шрифт. Bitter — близкий бесплатный fallback
+        // (низкоконтрастный slab-serif с кириллицей и весами 300/400/600),
+        // пока не подключены лицензионные файлы (см. public/fonts/README.md).
+        serif: ['"TT Rationalist"', '"Bitter"', 'Georgia', '"Times New Roman"', 'serif'],
+        sans: ['"TT Rationalist"', '"Bitter"', 'Georgia', 'serif'],
       },
       letterSpacing: {
         title: '0.22em',
