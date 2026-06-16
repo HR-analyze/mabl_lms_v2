@@ -39,8 +39,10 @@
     font-weight: 400;
   }
 
+  /* Цвет наследуется от родителя — заголовок одинаково работает
+     и на светлом, и на тёмном фоне (см. hero / CTA). */
   .display-title {
-    @apply font-serif uppercase tracking-title leading-[1.05] text-neft;
+    @apply font-serif uppercase tracking-title leading-[1.05];
     font-weight: 300;
   }
 

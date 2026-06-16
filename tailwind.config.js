@@ -31,8 +31,8 @@ export default {
         },
       },
       fontFamily: {
-        // TT Rationalist — фирменный шрифт. Georgia/serif как fallback,
-        // пока не подключены лицензионные файлы (см. public/fonts/README.md).
+        // TT Rationalist — фирменный шрифт (self-hosted, public/fonts/).
+        // Georgia/serif — системный fallback на время загрузки.
         serif: ['"TT Rationalist"', 'Georgia', '"Times New Roman"', 'serif'],
         sans: ['"TT Rationalist"', 'Georgia', 'serif'],
       },
