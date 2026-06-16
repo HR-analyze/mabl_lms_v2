@@ -7,6 +7,7 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Crest } from '@/components/brand/Crest'
 import { Book, Check, Clipboard, Lock, Play } from '@/components/ui/Icon'
+import { ScormPlayer } from '@/components/ScormPlayer'
 import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
 import { formatPrice, cn } from '@/lib/utils'
@@ -30,6 +31,15 @@ function LessonPlayer({ lesson }: { lesson: Lesson }) {
     )
   }
   if (lesson.format === 'scorm') {
+    if (lesson.launchUrl) {
+      return (
+        <ScormPlayer
+          src={lesson.launchUrl}
+          title={lesson.title}
+          storageKey={`mabl.scorm.${lesson.id}`}
+        />
+      )
+    }
     return (
       <div className="flex aspect-video flex-col items-center justify-center rounded-card border border-dashed border-ink-20 bg-ink-5 text-center">
         <span className="flex h-16 w-16 items-center justify-center rounded-card border border-ink-20 text-ocean">
@@ -66,7 +76,8 @@ export default function CourseDetailPage() {
   const { getCourseById } = useCourses()
   const course = getCourseById(id)
   const { isOwned } = usePurchases()
-  const owned = course ? isOwned(course.id) : false
+  // Бесплатные программы (цена 0) открыты без покупки — например, демо-SCORM-тренинг.
+  const owned = course ? course.price === 0 || isOwned(course.id) : false
 
   const firstLesson = course?.modules[0]?.lessons[0]
   const [activeLesson, setActiveLesson] = useState<Lesson | undefined>(firstLesson)

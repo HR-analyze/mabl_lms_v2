@@ -68,7 +68,11 @@ export default function CoursesPage() {
         {filtered.length > 0 ? (
           <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filtered.map((course) => (
-              <CourseCard key={course.id} course={course} owned={isOwned(course.id)} />
+              <CourseCard
+                key={course.id}
+                course={course}
+                owned={isOwned(course.id) || course.price === 0}
+              />
             ))}
           </div>
         ) : (

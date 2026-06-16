@@ -10,6 +10,8 @@ export interface Lesson {
   format: CourseFormat
   duration: string
   completed?: boolean
+  /** URL точки входа SCORM-пакета (res/index.html) для интерактивных уроков. */
+  launchUrl?: string
 }
 
 export interface CourseModule {

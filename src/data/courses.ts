@@ -196,6 +196,36 @@ export const courses: Course[] = [
       },
     ],
   },
+  {
+    id: 'manager-intro',
+    title: 'Кто такой менеджер',
+    subtitle: 'Вводный интерактивный тренинг',
+    description:
+      'Короткий интерактивный SCORM-тренинг о роли менеджера: задачи, ответственность и ключевые навыки. Демонстрация загрузки SCORM-пакета на платформу.',
+    format: 'scorm',
+    level: 'Базовый',
+    instructor: 'МАБЛ',
+    durationHours: 1,
+    lessonsCount: 1,
+    price: 0,
+    progress: 0,
+    tags: ['Менеджмент', 'SCORM', 'Тренинг'],
+    modules: [
+      {
+        id: 'm1',
+        title: 'Модуль 1. Введение',
+        lessons: [
+          {
+            id: 'manager-intro-sco',
+            title: 'Кто такой менеджер',
+            format: 'scorm',
+            duration: '1 ч',
+            launchUrl: '/scorm/manager-intro/res/index.html',
+          },
+        ],
+      },
+    ],
+  },
 ]
 
 export const getCourseById = (id: string): Course | undefined =>
