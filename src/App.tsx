@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import { ScrollToTop } from './components/ScrollToTop'
 import { PublicLayout } from './components/layout/PublicLayout'
+import { ContentLayout } from './components/layout/ContentLayout'
 import { AppLayout } from './components/layout/AppLayout'
 
 import HomePage from './pages/HomePage'
@@ -31,9 +32,14 @@ export default function App() {
     <>
       <ScrollToTop />
       <Routes>
-        {/* Публичная зона */}
+        {/* Публичная зона (только маркетинговые страницы) */}
         <Route element={<PublicLayout />}>
           <Route path="/" element={<HomePage />} />
+          <Route path="/checkout" element={<CheckoutPage />} />
+        </Route>
+
+        {/* Общие разделы: гостю — публичный каркас, слушателю — каркас кабинета */}
+        <Route element={<ContentLayout />}>
           <Route path="/courses" element={<CoursesPage />} />
           <Route path="/courses/:id" element={<CourseDetailPage />} />
           <Route path="/news" element={<NewsPage />} />
@@ -45,7 +51,6 @@ export default function App() {
           <Route path="/materials/:id" element={<MaterialDetailPage />} />
           <Route path="/surveys" element={<SurveysPage />} />
           <Route path="/surveys/:id" element={<SurveyDetailPage />} />
-          <Route path="/checkout" element={<CheckoutPage />} />
         </Route>
 
         {/* Аутентификация (без общего каркаса) */}

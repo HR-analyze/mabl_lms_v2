@@ -46,11 +46,11 @@ export default function AdminCoursesPage() {
         <div className="mt-10 overflow-hidden rounded-card border border-ink-10">
           {/* Шапка таблицы (десктоп) */}
           <div className="hidden grid-cols-12 gap-4 border-b border-ink-10 bg-ink-5 px-5 py-3 text-[0.68rem] uppercase tracking-wide text-ink-60 md:grid">
-            <span className="col-span-5">Программа</span>
+            <span className="col-span-4">Программа</span>
             <span className="col-span-2">Формат</span>
             <span className="col-span-2">Уровень</span>
-            <span className="col-span-2 text-right">Цена</span>
-            <span className="col-span-1 text-right">Действия</span>
+            <span className="col-span-1 text-right">Цена</span>
+            <span className="col-span-3 text-right">Действия</span>
           </div>
 
           <ul className="divide-y divide-ink-10">
@@ -59,29 +59,29 @@ export default function AdminCoursesPage() {
                 key={course.id}
                 className="grid grid-cols-1 gap-3 px-5 py-4 md:grid-cols-12 md:items-center md:gap-4"
               >
-                <div className="md:col-span-5">
+                <div className="min-w-0 md:col-span-4">
                   <Link
                     to={`/admin/courses/${course.id}`}
                     className="font-serif text-lg text-neft hover:text-ocean"
                   >
                     {course.title}
                   </Link>
-                  <p className="text-sm text-ink-60">{course.subtitle}</p>
+                  <p className="truncate text-sm text-ink-60">{course.subtitle}</p>
                 </div>
                 <div className="md:col-span-2">
                   <Badge tone="ocean">{courseFormatLabel[course.format]}</Badge>
                 </div>
                 <div className="text-sm text-ink-60 md:col-span-2">{course.level}</div>
-                <div className="text-sm text-neft md:col-span-2 md:text-right">
+                <div className="whitespace-nowrap text-sm text-neft md:col-span-1 md:text-right">
                   {formatPrice(course.price)}
                 </div>
-                <div className="flex gap-2 md:col-span-1 md:justify-end">
+                <div className="flex flex-wrap gap-1 md:col-span-3 md:flex-nowrap md:justify-end">
                   <Button to={`/admin/courses/${course.id}`} variant="ghost" size="sm">
                     Изменить
                   </Button>
                   <button
                     onClick={() => onDelete(course.id, course.title)}
-                    className="rounded-token px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-wide text-ocean hover:bg-oceanc-10"
+                    className="whitespace-nowrap rounded-token px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-wide text-ocean hover:bg-oceanc-10"
                   >
                     Удалить
                   </button>
