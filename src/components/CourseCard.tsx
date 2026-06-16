@@ -1,12 +1,9 @@
 import { Link } from 'react-router-dom'
 import type { Course } from '@/types'
-import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { ProgressBar } from './ui/ProgressBar'
 import { ArrowRight, Lock } from './ui/Icon'
-import { courseFormatLabel } from '@/lib/labels'
 import { formatPrice, cn } from '@/lib/utils'
-import { courses } from '@/data/courses'
 
 interface CourseCardProps {
   course: Course
@@ -15,15 +12,13 @@ interface CourseCardProps {
 
 /**
  * Строгая обложка программы (строго по бренд-гайду): сплошная брендовая
- * плоскость + тонкая академическая рамка + крупная серифная монограмма.
- * Различается по программе цветом (Нефть/Океан), буквой, дисциплиной и номером.
+ * плоскость + тонкая академическая рамка + крупное серифное название программы.
+ * Различается по программе цветом (Нефть/Океан) и дисциплиной.
  * Только бренд-палитра, без фото, градиентов и иллюстраций.
  */
 function CourseCover({ course }: { course: Course }) {
   // Океан — для интерактива/чтения (SCORM, лонгрид), Нефть — для видео-программ
   const isOcean = course.format === 'scorm' || course.format === 'longread'
-  const monogram = course.title.trim().charAt(0).toUpperCase()
-  const number = courses.findIndex((c) => c.id === course.id) + 1
 
   return (
     <Link
@@ -36,24 +31,14 @@ function CourseCover({ course }: { course: Course }) {
       {/* тонкая академическая рамка */}
       <span className="pointer-events-none absolute inset-4 border border-wisdom/20" />
 
-      {/* монограмма дисциплины */}
-      <span className="relative font-serif text-[3.5rem] font-light leading-none text-wisdom">
-        {monogram}
+      {/* название программы */}
+      <span className="relative px-8 text-center font-serif text-2xl font-light leading-tight text-wisdom">
+        {course.title}
       </span>
 
-      {/* формат */}
-      <span className="absolute left-4 top-4">
-        <Badge tone={isOcean ? 'dark' : 'ocean'} className="ring-1 ring-wisdom/20">
-          {courseFormatLabel[course.format]}
-        </Badge>
-      </span>
-
-      {/* дисциплина и номер программы */}
+      {/* дисциплина */}
       <span className="absolute bottom-3.5 left-5 text-[0.66rem] uppercase tracking-wide text-wisdom/55">
         {course.tags[0]}
-      </span>
-      <span className="absolute bottom-3.5 right-5 font-serif text-[0.72rem] uppercase tracking-wide text-wisdom/45">
-        № {String(number).padStart(2, '0')}
       </span>
     </Link>
   )
@@ -72,12 +57,11 @@ export function CourseCard({ course, owned }: CourseCardProps) {
           <span>{course.durationHours} ч</span>
         </div>
 
-        <h3 className="font-serif text-xl leading-tight text-neft">
+        <p className="text-sm text-ink-60">
           <Link to={`/courses/${course.id}`} className="hover:text-ocean">
-            {course.title}
+            {course.subtitle}
           </Link>
-        </h3>
-        <p className="mt-2 text-sm text-ink-60">{course.subtitle}</p>
+        </p>
 
         <div className="mt-4 flex-1" />
 
