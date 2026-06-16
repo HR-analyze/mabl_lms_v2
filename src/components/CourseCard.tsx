@@ -3,33 +3,67 @@ import type { Course } from '@/types'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { ProgressBar } from './ui/ProgressBar'
-import { Crest } from './brand/Crest'
 import { ArrowRight, Lock } from './ui/Icon'
 import { courseFormatLabel } from '@/lib/labels'
-import { formatPrice } from '@/lib/utils'
+import { formatPrice, cn } from '@/lib/utils'
+import { courses } from '@/data/courses'
 
 interface CourseCardProps {
   course: Course
   owned: boolean
 }
 
+/**
+ * Строгая обложка программы (строго по бренд-гайду): сплошная брендовая
+ * плоскость + тонкая академическая рамка + крупная серифная монограмма.
+ * Различается по программе цветом (Нефть/Океан), буквой, дисциплиной и номером.
+ * Только бренд-палитра, без фото, градиентов и иллюстраций.
+ */
+function CourseCover({ course }: { course: Course }) {
+  // Океан — для интерактива/чтения (SCORM, лонгрид), Нефть — для видео-программ
+  const isOcean = course.format === 'scorm' || course.format === 'longread'
+  const monogram = course.title.trim().charAt(0).toUpperCase()
+  const number = courses.findIndex((c) => c.id === course.id) + 1
+
+  return (
+    <Link
+      to={`/courses/${course.id}`}
+      className={cn(
+        'relative flex aspect-[16/9] items-center justify-center overflow-hidden rounded-t-card text-wisdom',
+        isOcean ? 'bg-ocean' : 'bg-neft',
+      )}
+    >
+      {/* тонкая академическая рамка */}
+      <span className="pointer-events-none absolute inset-4 border border-wisdom/20" />
+
+      {/* монограмма дисциплины */}
+      <span className="relative font-serif text-[3.5rem] font-light leading-none text-wisdom">
+        {monogram}
+      </span>
+
+      {/* формат */}
+      <span className="absolute left-4 top-4">
+        <Badge tone={isOcean ? 'dark' : 'ocean'} className="ring-1 ring-wisdom/20">
+          {courseFormatLabel[course.format]}
+        </Badge>
+      </span>
+
+      {/* дисциплина и номер программы */}
+      <span className="absolute bottom-3.5 left-5 text-[0.66rem] uppercase tracking-wide text-wisdom/55">
+        {course.tags[0]}
+      </span>
+      <span className="absolute bottom-3.5 right-5 font-serif text-[0.72rem] uppercase tracking-wide text-wisdom/45">
+        № {String(number).padStart(2, '0')}
+      </span>
+    </Link>
+  )
+}
+
 /** Карточка курса для каталога и дашборда. */
 export function CourseCard({ course, owned }: CourseCardProps) {
   return (
     <article className="group flex flex-col rounded-card border border-ink-10 bg-wisdom transition-colors duration-200 hover:border-ink-40">
-      {/* Обложка: фирменная плоскость с гербом и паттерном */}
-      <Link
-        to={`/courses/${course.id}`}
-        className="relative flex aspect-[16/9] items-center justify-center overflow-hidden rounded-t-card bg-neft"
-      >
-        <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
-        <Crest className="relative h-16 w-16" onDark />
-        <div className="absolute left-4 top-4 flex gap-2">
-          <Badge tone="dark" className="ring-1 ring-wisdom/20">
-            {courseFormatLabel[course.format]}
-          </Badge>
-        </div>
-      </Link>
+      <CourseCover course={course} />
 
       <div className="flex flex-1 flex-col p-6">
         <div className="mb-3 flex items-center gap-2 text-[0.7rem] uppercase tracking-wide text-ink-60">

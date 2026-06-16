@@ -82,10 +82,10 @@
     @apply w-full;
   }
 
-  /* Фоновый паттерн бренда — едва заметный */
+  /* Фирменный паттерн бренда — бесшовная ромбическая решётка (SVG) */
   .brand-pattern {
-    background-image: url('/brand/pattern-tile.png');
-    background-size: 360px;
+    background-image: url('/brand/pattern.svg');
+    background-size: 76px 76px;
     background-repeat: repeat;
   }
 }
