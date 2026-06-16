@@ -24,8 +24,8 @@ export const colors = {
 } as const
 
 export const typography = {
-  /** Фирменный шрифт */
-  fontFamily: '"TT Rationalist", Georgia, "Times New Roman", serif',
+  /** Фирменный шрифт (+ близкий fallback с кириллицей) */
+  fontFamily: '"TT Rationalist", "Source Serif 4", Georgia, "Times New Roman", serif',
   weight: {
     light: 300,
     regular: 400,
