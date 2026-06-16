@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { AdminPageHeader, StatCard, StatusPill } from '@/components/admin/AdminUI'
 import { useCourses } from '@/context/CoursesContext'
-import { getAdminUserById } from '@/data/users'
-import { orders } from '@/data/orders'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { orderStatusLabel } from '@/lib/labels'
 import { formatDate, formatPrice, cn } from '@/lib/utils'
 import type { OrderStatus } from '@/types'
@@ -23,11 +23,19 @@ const filters: { key: OrderStatus | 'all'; label: string }[] = [
 /** Заказы (покупки программ). */
 export default function AdminOrdersPage() {
   const { getCourseById } = useCourses()
+  const { data: ordersData, loading } = useAsync(() => api.orders.list(), [])
+  const { data: usersData } = useAsync(() => api.users.list(), [])
   const [status, setStatus] = useState<OrderStatus | 'all'>('all')
+
+  const orders = useMemo(() => ordersData ?? [], [ordersData])
+  const userById = useMemo(
+    () => new Map((usersData ?? []).map((u) => [u.id, u])),
+    [usersData],
+  )
 
   const sorted = useMemo(
     () => [...orders].sort((a, b) => +new Date(b.date) - +new Date(a.date)),
-    [],
+    [orders],
   )
   const filtered = useMemo(
     () => (status === 'all' ? sorted : sorted.filter((o) => o.status === status)),
@@ -79,10 +87,12 @@ export default function AdminOrdersPage() {
           <span className="col-span-2 text-right">Статус</span>
         </div>
 
-        {filtered.length > 0 ? (
+        {loading ? (
+          <div className="px-5 py-16 text-center text-ink-60">Загрузка заказов…</div>
+        ) : filtered.length > 0 ? (
           <ul className="divide-y divide-ink-10">
             {filtered.map((o) => {
-              const user = getAdminUserById(o.userId)
+              const user = userById.get(o.userId)
               const course = getCourseById(o.courseId)
               return (
                 <li

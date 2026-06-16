@@ -5,8 +5,8 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ArrowRight, Book, Document, Grid, User } from '@/components/ui/Icon'
 import { AdminPageHeader, StatCard, StatusPill } from '@/components/admin/AdminUI'
 import { useCourses } from '@/context/CoursesContext'
-import { adminUsers, getAdminUserById } from '@/data/users'
-import { orders } from '@/data/orders'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { orderStatusLabel } from '@/lib/labels'
 import { formatPrice } from '@/lib/utils'
 import type { OrderStatus } from '@/types'
@@ -20,6 +20,12 @@ const statusTone: Record<OrderStatus, 'positive' | 'neutral' | 'muted'> = {
 /** Обзорная панель администратора: ключевые метрики и последняя активность. */
 export default function AdminOverviewPage() {
   const { courses } = useCourses()
+  const { data: usersData } = useAsync(() => api.users.list(), [])
+  const { data: ordersData } = useAsync(() => api.orders.list(), [])
+
+  const adminUsers = usersData ?? []
+  const orders = ordersData ?? []
+  const userById = new Map(adminUsers.map((u) => [u.id, u]))
 
   const students = adminUsers.filter((u) => u.role === 'student')
   const paidOrders = orders.filter((o) => o.status === 'paid')
@@ -80,7 +86,7 @@ export default function AdminOverviewPage() {
           <Card>
             <ul className="divide-y divide-ink-10">
               {recentOrders.map((o) => {
-                const user = getAdminUserById(o.userId)
+                const user = userById.get(o.userId)
                 const course = courses.find((c) => c.id === o.courseId)
                 return (
                   <li key={o.id} className="flex items-center justify-between gap-4 px-5 py-3.5">

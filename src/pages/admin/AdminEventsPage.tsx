@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/Badge'
 import { AdminPageHeader, StatCard } from '@/components/admin/AdminUI'
-import { events } from '@/data/events'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { formatDateTime, formatPrice, cn } from '@/lib/utils'
 import type { CalendarEventType } from '@/types'
 
@@ -16,11 +17,13 @@ const NOW = new Date('2026-06-16')
 
 /** Управление событиями и вебинарами академии. */
 export default function AdminEventsPage() {
+  const { data, loading } = useAsync(() => api.events.list(), [])
+  const events = useMemo(() => data ?? [], [data])
   const [type, setType] = useState<CalendarEventType | 'all'>('all')
 
   const sorted = useMemo(
     () => [...events].sort((a, b) => +new Date(a.date) - +new Date(b.date)),
-    [],
+    [events],
   )
   const filtered = useMemo(
     () => (type === 'all' ? sorted : sorted.filter((e) => e.type === type)),
@@ -61,6 +64,9 @@ export default function AdminEventsPage() {
       </div>
 
       <div className="mt-6 overflow-hidden rounded-card border border-ink-10">
+        {loading && (
+          <div className="px-5 py-16 text-center text-ink-60">Загрузка событий…</div>
+        )}
         <ul className="divide-y divide-ink-10">
           {filtered.map((e) => {
             const past = new Date(e.date) < NOW

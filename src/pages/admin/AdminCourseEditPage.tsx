@@ -72,7 +72,7 @@ export default function AdminCourseEditPage() {
     return Number.isFinite(n) ? n : 0
   }
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
     if (!form.title.trim()) {
@@ -91,10 +91,10 @@ export default function AdminCourseEditPage() {
     }
 
     if (isNew) {
-      const newId = addCourse(payload)
+      const newId = await addCourse(payload)
       navigate(`/admin/courses/${newId}`)
     } else {
-      updateCourse(form.id, payload)
+      await updateCourse(form.id, payload)
       navigate('/admin/courses')
     }
   }

@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/Badge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { AdminPageHeader, StatCard, StatusPill } from '@/components/admin/AdminUI'
-import { adminUsers } from '@/data/users'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { adminUserStatusLabel } from '@/lib/labels'
 import { formatDate, cn } from '@/lib/utils'
 import type { AdminUser, AdminUserStatus } from '@/types'
@@ -22,15 +23,24 @@ const filters: { key: AdminUserStatus | 'all'; label: string }[] = [
 
 /** Управление участниками платформы. */
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState<AdminUser[]>(adminUsers)
+  const { data, loading } = useAsync(() => api.users.list(), [])
+  const [users, setUsers] = useState<AdminUser[]>([])
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<AdminUserStatus | 'all'>('all')
 
+  useEffect(() => {
+    if (data) setUsers(data)
+  }, [data])
+
   const toggleBlock = (id: string) =>
     setUsers((prev) =>
-      prev.map((u) =>
-        u.id === id ? { ...u, status: u.status === 'blocked' ? 'active' : 'blocked' } : u,
-      ),
+      prev.map((u) => {
+        if (u.id !== id) return u
+        const next: AdminUserStatus = u.status === 'blocked' ? 'active' : 'blocked'
+        // Оптимистичное обновление + отправка в слой данных.
+        void api.users.setStatus(id, next)
+        return { ...u, status: next }
+      }),
     )
 
   const filtered = useMemo(() => {
@@ -94,7 +104,9 @@ export default function AdminUsersPage() {
           <span className="col-span-2 text-right">Действия</span>
         </div>
 
-        {filtered.length > 0 ? (
+        {loading ? (
+          <div className="px-5 py-16 text-center text-ink-60">Загрузка участников…</div>
+        ) : filtered.length > 0 ? (
           <ul className="divide-y divide-ink-10">
             {filtered.map((u) => (
               <li

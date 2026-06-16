@@ -116,6 +116,3 @@ export const adminUsers: AdminUser[] = [
     avgProgress: 0,
   },
 ]
-
-export const getAdminUserById = (id: string): AdminUser | undefined =>
-  adminUsers.find((u) => u.id === id)
