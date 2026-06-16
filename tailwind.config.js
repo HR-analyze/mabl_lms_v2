@@ -31,11 +31,10 @@ export default {
         },
       },
       fontFamily: {
-        // TT Rationalist — фирменный шрифт. Bitter — близкий бесплатный fallback
-        // (низкоконтрастный slab-serif с кириллицей и весами 300/400/600),
-        // пока не подключены лицензионные файлы (см. public/fonts/README.md).
-        serif: ['"TT Rationalist"', '"Bitter"', 'Georgia', '"Times New Roman"', 'serif'],
-        sans: ['"TT Rationalist"', '"Bitter"', 'Georgia', 'serif'],
+        // TT Rationalist — фирменный шрифт (self-hosted, public/fonts/).
+        // Georgia/serif — системный fallback на время загрузки.
+        serif: ['"TT Rationalist"', 'Georgia', '"Times New Roman"', 'serif'],
+        sans: ['"TT Rationalist"', 'Georgia', 'serif'],
       },
       letterSpacing: {
         title: '0.22em',

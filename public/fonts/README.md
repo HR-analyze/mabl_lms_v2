@@ -1,21 +1,19 @@
 # Шрифт TT Rationalist
 
-Фирменный шрифт МАБЛ — **TT Rationalist** (TypeType Foundry). Это
-коммерческий шрифт, поэтому файлы не входят в репозиторий по
-лицензионным причинам.
+Фирменный шрифт МАБЛ — **TT Rationalist** (TypeType Foundry), подключён
+как self-hosted web-font. Файлы лежат здесь же:
 
-## Как подключить лицензионные файлы
+| Начертание | Файлы | Веса CSS |
+| --- | --- | --- |
+| Regular | `TT_Rationalist_Regular.woff2`, `.woff` | 300–400 |
+| Medium  | `TT_Rationalist_Medium.woff2`, `.woff`  | 500–700 |
 
-1. Приобретите/получите лицензию TT Rationalist (web).
-2. Положите файлы в эту папку (`public/fonts/`) со следующими именами:
+`@font-face` описаны в `src/styles/fonts.css`. Стек шрифтов и токены —
+в `tailwind.config.js` и `src/theme/tokens.ts`.
 
-   - `TTRationalist-Light.woff2`
-   - `TTRationalist-Regular.woff2`
-   - `TTRationalist-DemiBold.woff2`
+> Лицензия: Web-font License от TypeType (входит в исходный комплект
+> шрифта). Используйте файлы только в рамках приобретённой лицензии.
 
-3. `@font-face` уже описаны в `src/styles/fonts.css` и подхватятся
-   автоматически.
-
-Пока файлы не добавлены, сайт использует системный serif-fallback
-(Georgia / Times New Roman), визуально близкий по строю к TT Rationalist,
-чтобы вёрстка оставалась академичной и читаемой.
+Если понадобятся дополнительные начертания (Light, DemiBold, Bold) —
+добавьте их `.woff2`/`.woff` сюда и опишите новые `@font-face` с нужным
+`font-weight` в `src/styles/fonts.css`.

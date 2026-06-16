@@ -1,30 +1,29 @@
 /*
- * TT Rationalist — фирменный шрифт МАБЛ.
- * Файлы добавляются в public/fonts/ (см. public/fonts/README.md).
- * font-display: swap + serif fallback гарантируют корректную вёрстку
- * даже без лицензионных файлов шрифта.
+ * TT Rationalist — фирменный шрифт МАБЛ (self-hosted, TypeType).
+ * Лицензия: Web-font License (см. исходный комплект шрифта).
+ * В комплекте два начертания — Regular и Medium. Соответствие весам дизайна:
+ *   300 (light)   → Regular   600 (demibold) → Medium
+ *   400 (regular) → Regular   500/700        → Medium
  */
 
+/* Regular */
 @font-face {
   font-family: 'TT Rationalist';
   font-style: normal;
-  font-weight: 300;
+  font-weight: 300 400;
   font-display: swap;
-  src: url('/fonts/TTRationalist-Light.woff2') format('woff2');
+  src:
+    url('/fonts/TT_Rationalist_Regular.woff2') format('woff2'),
+    url('/fonts/TT_Rationalist_Regular.woff') format('woff');
 }
 
+/* Medium (используется для 500–700) */
 @font-face {
   font-family: 'TT Rationalist';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 500 700;
   font-display: swap;
-  src: url('/fonts/TTRationalist-Regular.woff2') format('woff2');
-}
-
-@font-face {
-  font-family: 'TT Rationalist';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/fonts/TTRationalist-DemiBold.woff2') format('woff2');
+  src:
+    url('/fonts/TT_Rationalist_Medium.woff2') format('woff2'),
+    url('/fonts/TT_Rationalist_Medium.woff') format('woff');
 }
