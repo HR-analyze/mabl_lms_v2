@@ -23,9 +23,13 @@ import SurveysPage from './pages/SurveysPage'
 import SurveyDetailPage from './pages/SurveyDetailPage'
 import NotificationsPage from './pages/NotificationsPage'
 
-import { AdminGuard } from './components/admin/AdminGuard'
+import { AdminLayout } from './components/layout/AdminLayout'
+import AdminOverviewPage from './pages/admin/AdminOverviewPage'
 import AdminCoursesPage from './pages/admin/AdminCoursesPage'
 import AdminCourseEditPage from './pages/admin/AdminCourseEditPage'
+import AdminUsersPage from './pages/admin/AdminUsersPage'
+import AdminOrdersPage from './pages/admin/AdminOrdersPage'
+import AdminEventsPage from './pages/admin/AdminEventsPage'
 
 export default function App() {
   return (
@@ -56,17 +60,21 @@ export default function App() {
         {/* Аутентификация (без общего каркаса) */}
         <Route path="/login" element={<LoginPage />} />
 
-        {/* Личный кабинет (защищённая зона) */}
+        {/* Личный кабинет слушателя (защищённая зона) */}
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+        </Route>
 
-          {/* Админ-зона (только для роли admin) */}
-          <Route element={<AdminGuard />}>
-            <Route path="/admin" element={<AdminCoursesPage />} />
-            <Route path="/admin/courses/new" element={<AdminCourseEditPage />} />
-            <Route path="/admin/courses/:id" element={<AdminCourseEditPage />} />
-          </Route>
+        {/* Админ-панель: собственный каркас, доступ только для роли admin */}
+        <Route element={<AdminLayout />}>
+          <Route path="/admin" element={<AdminOverviewPage />} />
+          <Route path="/admin/courses" element={<AdminCoursesPage />} />
+          <Route path="/admin/courses/new" element={<AdminCourseEditPage />} />
+          <Route path="/admin/courses/:id" element={<AdminCourseEditPage />} />
+          <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="/admin/orders" element={<AdminOrdersPage />} />
+          <Route path="/admin/events" element={<AdminEventsPage />} />
         </Route>
 
         <Route path="*" element={<NotFoundPage />} />

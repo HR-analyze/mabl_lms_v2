@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Grid } from '@/components/ui/Icon'
+import { AdminPageHeader } from '@/components/admin/AdminUI'
 import { useCourses } from '@/context/CoursesContext'
 import { courseFormatLabel } from '@/lib/labels'
 import { formatPrice } from '@/lib/utils'
@@ -24,23 +25,20 @@ export default function AdminCoursesPage() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="eyebrow mb-3">Администрирование</p>
-          <h1 className="font-serif text-3xl text-neft">Программы академии</h1>
-          <p className="mt-2 text-ink-60">
-            Всего программ: {courses.length}. Создавайте, редактируйте и удаляйте курсы каталога.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={onReset} variant="secondary" size="sm">
-            Сбросить демо-данные
-          </Button>
-          <Button to="/admin/courses/new" size="sm">
-            + Добавить программу
-          </Button>
-        </div>
-      </div>
+      <AdminPageHeader
+        title="Программы академии"
+        description={`Всего программ: ${courses.length}. Создавайте, редактируйте и удаляйте курсы каталога.`}
+        actions={
+          <>
+            <Button onClick={onReset} variant="secondary" size="sm">
+              Сбросить демо-данные
+            </Button>
+            <Button to="/admin/courses/new" size="sm">
+              + Добавить программу
+            </Button>
+          </>
+        }
+      />
 
       {courses.length > 0 ? (
         <div className="mt-10 overflow-hidden rounded-card border border-ink-10">

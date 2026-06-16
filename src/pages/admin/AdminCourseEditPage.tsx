@@ -57,7 +57,7 @@ export default function AdminCourseEditPage() {
     return (
       <div className="py-10 text-center">
         <h1 className="font-serif text-2xl text-neft">Программа не найдена</h1>
-        <Button to="/admin" className="mt-6" size="sm">
+        <Button to="/admin/courses" className="mt-6" size="sm">
           ← К списку программ
         </Button>
       </div>
@@ -95,13 +95,13 @@ export default function AdminCourseEditPage() {
       navigate(`/admin/courses/${newId}`)
     } else {
       updateCourse(form.id, payload)
-      navigate('/admin')
+      navigate('/admin/courses')
     }
   }
 
   return (
     <div>
-      <Link to="/admin" className="text-sm text-ink-60 hover:text-neft">
+      <Link to="/admin/courses" className="text-sm text-ink-60 hover:text-neft">
         ← К списку программ
       </Link>
 
@@ -231,7 +231,7 @@ export default function AdminCourseEditPage() {
 
         <div className="flex flex-wrap gap-3 border-t border-ink-10 pt-6">
           <Button type="submit">{isNew ? 'Создать программу' : 'Сохранить изменения'}</Button>
-          <Button to="/admin" variant="secondary">
+          <Button to="/admin/courses" variant="secondary">
             Отмена
           </Button>
         </div>

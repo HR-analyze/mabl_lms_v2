@@ -66,7 +66,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             </p>
             <NavLink to="/admin" onClick={onNavigate} className={linkClass}>
               <Grid width={18} height={18} />
-              <span className="uppercase tracking-wide text-[0.78rem]">Программы</span>
+              <span className="uppercase tracking-wide text-[0.78rem]">Админ-панель</span>
             </NavLink>
           </div>
         )}

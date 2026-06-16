@@ -41,13 +41,21 @@ export function AppShell({ children, surfaceClassName = 'bg-ink-5' }: {
       <div className="lg:pl-64">
         {/* Верхняя панель */}
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-ink-10 bg-wisdom px-5 md:px-8">
-          <button
-            className="inline-flex h-10 w-10 items-center justify-center text-neft lg:hidden"
-            onClick={() => setMobileOpen((v) => !v)}
-            aria-label="Меню"
-          >
-            {mobileOpen ? <Close /> : <Menu />}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              className="inline-flex h-10 w-10 items-center justify-center text-neft lg:hidden"
+              onClick={() => setMobileOpen((v) => !v)}
+              aria-label="Меню"
+            >
+              {mobileOpen ? <Close /> : <Menu />}
+            </button>
+            <Link
+              to="/"
+              className="hidden items-center gap-1.5 text-[0.72rem] uppercase tracking-wide text-ink-60 transition-colors hover:text-neft sm:inline-flex"
+            >
+              ← На главную
+            </Link>
+          </div>
 
           <div className="ml-auto flex items-center gap-2 md:gap-4">
             <Link
