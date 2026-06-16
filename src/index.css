@@ -82,10 +82,12 @@
     @apply w-full;
   }
 
-  /* Фирменный паттерн бренда — бесшовная ромбическая решётка (SVG) */
+  /* Фирменный паттерн бренда из бренд-гайда (книги с литерами Sapere/Ducere,
+     ракушки, волна). Тайл 747×747 вырезан строго по периоду повтора —
+     стыкуется без швов при любом масштабе. */
   .brand-pattern {
-    background-image: url('/brand/pattern.svg');
-    background-size: 76px 76px;
+    background-image: url('/brand/pattern-tile.png');
+    background-size: 340px 340px;
     background-repeat: repeat;
   }
 }
