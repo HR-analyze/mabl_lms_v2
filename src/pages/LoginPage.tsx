@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { useAuth } from '@/context/AuthContext'
 
 export default function LoginPage() {
-  const { login, recover, demoCredentials } = useAuth()
+  const { login, recover, demoAccounts } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const from = (location.state as { from?: string })?.from || '/dashboard'
@@ -26,8 +26,10 @@ export default function LoginPage() {
     setInfo('')
     setLoading(true)
     try {
-      await login(email, password)
-      navigate(from, { replace: true })
+      const account = await login(email, password)
+      // Администратора по умолчанию ведём в админ-панель.
+      const target = from === '/dashboard' && account.kind === 'admin' ? '/admin' : from
+      navigate(target, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка входа')
     } finally {
@@ -50,9 +52,9 @@ export default function LoginPage() {
     }
   }
 
-  const fillDemo = () => {
-    setEmail(demoCredentials.email)
-    setPassword(demoCredentials.password)
+  const fillDemo = (demoEmail: string, demoPassword: string) => {
+    setEmail(demoEmail)
+    setPassword(demoPassword)
     setError('')
   }
 
@@ -135,15 +137,34 @@ export default function LoginPage() {
                 </Link>
               </div>
 
-              {/* Демо-доступ */}
+              {/* Демо-доступ: слушатель и администратор */}
               <div className="rounded-token border border-dashed border-ink-20 p-4 text-sm text-ink-60">
                 <p className="font-medium text-neft">Демо-доступ</p>
-                <p className="mt-1">
-                  {demoCredentials.email} · {demoCredentials.password}
-                </p>
-                <button type="button" onClick={fillDemo} className="mt-2 text-ocean hover:text-oceanc-80">
-                  Подставить данные
-                </button>
+                <p className="mt-1 text-ink-60">Войдите под одной из ролей одним кликом:</p>
+                <div className="mt-3 space-y-3">
+                  {demoAccounts.map((acc) => (
+                    <div
+                      key={acc.email}
+                      className="flex items-center justify-between gap-3 rounded-token bg-ink-5 px-3 py-2"
+                    >
+                      <div className="leading-tight">
+                        <p className="text-[0.78rem] font-semibold uppercase tracking-wide text-neft">
+                          {acc.label}
+                        </p>
+                        <p className="text-[0.78rem] text-ink-60">
+                          {acc.email} · {acc.password}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => fillDemo(acc.email, acc.password)}
+                        className="shrink-0 text-ocean hover:text-oceanc-80"
+                      >
+                        Подставить
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </form>
           ) : (

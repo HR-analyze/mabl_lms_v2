@@ -9,24 +9,67 @@ import { delay } from '@/lib/utils'
  * провайдер (JWT/сессии): см. README → «Что подключить для production».
  */
 
-const DEMO_USER: User = {
-  id: 'u-001',
-  name: 'Александр Орлов',
-  email: 'demo@mabl.ru',
-  role: 'Слушатель академии',
+/** Демо-аккаунт: учётные данные + связанный профиль пользователя. */
+interface DemoAccount {
+  email: string
+  password: string
+  /** Короткая подпись для экрана входа. */
+  label: string
+  user: User
 }
 
-const DEMO_CREDENTIALS = { email: 'demo@mabl.ru', password: 'mabl2026' }
+const DEMO_ACCOUNTS: DemoAccount[] = [
+  {
+    email: 'demo@mabl.ru',
+    password: 'mabl2026',
+    label: 'Слушатель',
+    user: {
+      id: 'u-001',
+      name: 'Александр Орлов',
+      email: 'demo@mabl.ru',
+      role: 'Слушатель академии',
+      kind: 'student',
+    },
+  },
+  {
+    email: 'admin@mabl.ru',
+    password: 'admin2026',
+    label: 'Администратор',
+    user: {
+      id: 'u-adm',
+      name: 'Елена Северова',
+      email: 'admin@mabl.ru',
+      role: 'Администратор платформы',
+      kind: 'admin',
+    },
+  },
+]
 
 const STORAGE_KEY = 'mabl.auth.user'
+
+/** Совместимость со старыми профилями в localStorage (без поля kind). */
+function normalizeUser(raw: unknown): User | null {
+  if (!raw || typeof raw !== 'object') return null
+  const u = raw as Partial<User>
+  if (!u.id || !u.email) return null
+  return {
+    id: u.id,
+    name: u.name ?? '',
+    email: u.email,
+    role: u.role ?? 'Слушатель академии',
+    kind: u.kind === 'admin' ? 'admin' : 'student',
+  }
+}
 
 interface AuthContextValue {
   user: User | null
   isAuthenticated: boolean
-  login: (email: string, password: string) => Promise<void>
+  isAdmin: boolean
+  login: (email: string, password: string) => Promise<User>
   logout: () => void
   recover: (email: string) => Promise<string>
-  demoCredentials: typeof DEMO_CREDENTIALS
+  /** Демо-аккаунты для быстрого входа на экране авторизации. */
+  demoAccounts: DemoAccount[]
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -35,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
-      return raw ? (JSON.parse(raw) as User) : null
+      return raw ? normalizeUser(JSON.parse(raw)) : null
     } catch {
       return null
     }
@@ -48,13 +91,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     await delay(600)
-    const matches =
-      email.trim().toLowerCase() === DEMO_CREDENTIALS.email &&
-      password === DEMO_CREDENTIALS.password
-    if (!matches) {
+    const account = DEMO_ACCOUNTS.find(
+      (a) => a.email === email.trim().toLowerCase() && a.password === password,
+    )
+    if (!account) {
       throw new Error('Неверный e-mail или пароль. Проверьте данные и попробуйте снова.')
     }
-    setUser(DEMO_USER)
+    setUser(account.user)
+    return account.user
   }
 
   const logout = () => setUser(null)
@@ -72,10 +116,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       isAuthenticated: Boolean(user),
+      isAdmin: user?.kind === 'admin',
       login,
       logout,
       recover,
-      demoCredentials: DEMO_CREDENTIALS,
+      demoAccounts: DEMO_ACCOUNTS,
     }),
     [user],
   )

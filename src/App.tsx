@@ -22,6 +22,10 @@ import SurveysPage from './pages/SurveysPage'
 import SurveyDetailPage from './pages/SurveyDetailPage'
 import NotificationsPage from './pages/NotificationsPage'
 
+import { AdminGuard } from './components/admin/AdminGuard'
+import AdminCoursesPage from './pages/admin/AdminCoursesPage'
+import AdminCourseEditPage from './pages/admin/AdminCourseEditPage'
+
 export default function App() {
   return (
     <>
@@ -51,6 +55,13 @@ export default function App() {
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+
+          {/* Админ-зона (только для роли admin) */}
+          <Route element={<AdminGuard />}>
+            <Route path="/admin" element={<AdminCoursesPage />} />
+            <Route path="/admin/courses/new" element={<AdminCourseEditPage />} />
+            <Route path="/admin/courses/:id" element={<AdminCourseEditPage />} />
+          </Route>
         </Route>
 
         <Route path="*" element={<NotFoundPage />} />

@@ -134,9 +134,15 @@ export interface Survey {
   relatedCourseId?: string
 }
 
+/** Уровень доступа пользователя в системе. */
+export type UserRole = 'admin' | 'student'
+
 export interface User {
   id: string
   name: string
   email: string
+  /** Отображаемая должность/статус (например, «Слушатель академии»). */
   role: string
+  /** Уровень доступа: администратор или слушатель. */
+  kind: UserRole
 }

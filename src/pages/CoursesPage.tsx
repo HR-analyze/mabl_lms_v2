@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Container, SectionHeading } from '@/components/ui/Section'
 import { CourseCard } from '@/components/CourseCard'
-import { courses } from '@/data/courses'
+import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
 import { cn } from '@/lib/utils'
 
@@ -18,6 +18,7 @@ const filters: { key: FilterKey; label: string }[] = [
 
 export default function CoursesPage() {
   const { isOwned } = usePurchases()
+  const { courses } = useCourses()
   const [active, setActive] = useState<FilterKey>('all')
 
   const filtered = useMemo(() => {
@@ -35,7 +36,7 @@ export default function CoursesPage() {
           return true
       }
     })
-  }, [active, isOwned])
+  }, [active, isOwned, courses])
 
   return (
     <div className="py-14 md:py-20">

@@ -3,9 +3,10 @@ import { Container, SectionHeading } from '@/components/ui/Section'
 import { Badge } from '@/components/ui/Badge'
 import { ArrowRight, Clipboard } from '@/components/ui/Icon'
 import { surveys } from '@/data/surveys'
-import { getCourseById } from '@/data/courses'
+import { useCourses } from '@/context/CoursesContext'
 
 export default function SurveysPage() {
+  const { getCourseById } = useCourses()
   return (
     <div className="py-14 md:py-20">
       <Container>

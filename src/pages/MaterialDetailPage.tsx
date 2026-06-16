@@ -4,11 +4,12 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Document } from '@/components/ui/Icon'
 import { getMaterialById } from '@/data/materials'
-import { getCourseById } from '@/data/courses'
+import { useCourses } from '@/context/CoursesContext'
 import { formatDate } from '@/lib/utils'
 
 export default function MaterialDetailPage() {
   const { id = '' } = useParams()
+  const { getCourseById } = useCourses()
   const material = getMaterialById(id)
 
   if (!material) {

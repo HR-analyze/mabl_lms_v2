@@ -5,8 +5,8 @@ import { Badge } from '@/components/ui/Badge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { NotificationItem } from '@/components/NotificationItem'
 import { ArrowRight, ArrowUpRight, Calendar, Clipboard, Document, Grid } from '@/components/ui/Icon'
-import { courses } from '@/data/courses'
 import { events } from '@/data/events'
+import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
 import { useNotifications } from '@/context/NotificationsContext'
 import { useAuth } from '@/context/AuthContext'
@@ -22,6 +22,7 @@ const quickLinks = [
 
 export default function DashboardPage() {
   const { user } = useAuth()
+  const { courses } = useCourses()
   const { ownedCourseIds } = usePurchases()
   const { items } = useNotifications()
 

@@ -4,13 +4,14 @@ import { Container, SectionHeading } from '@/components/ui/Section'
 import { Badge } from '@/components/ui/Badge'
 import { Document } from '@/components/ui/Icon'
 import { materials } from '@/data/materials'
-import { getCourseById } from '@/data/courses'
+import { useCourses } from '@/context/CoursesContext'
 import { formatDate, cn } from '@/lib/utils'
 import type { MaterialType } from '@/types'
 
 const types: (MaterialType | 'Все')[] = ['Все', 'PDF', 'Шаблон', 'Презентация', 'Чек-лист', 'Видео']
 
 export default function MaterialsPage() {
+  const { getCourseById } = useCourses()
   const [active, setActive] = useState<MaterialType | 'Все'>('Все')
 
   const filtered = useMemo(

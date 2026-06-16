@@ -5,9 +5,9 @@ import { Badge } from '@/components/ui/Badge'
 import { CourseCard } from '@/components/CourseCard'
 import { Crest } from '@/components/brand/Crest'
 import { ArrowRight, ArrowUpRight, Clock, Pin } from '@/components/ui/Icon'
-import { courses } from '@/data/courses'
 import { news } from '@/data/news'
 import { getNextWebinar } from '@/data/events'
+import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
 import { formatDate, formatDateTime, formatPrice } from '@/lib/utils'
 
@@ -20,6 +20,7 @@ const stats = [
 
 export default function HomePage() {
   const { isOwned } = usePurchases()
+  const { courses } = useCourses()
   const webinar = getNextWebinar()
   const featured = courses.slice(0, 3)
   const latestNews = news.slice(0, 3)

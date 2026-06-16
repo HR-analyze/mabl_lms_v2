@@ -7,7 +7,7 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Crest } from '@/components/brand/Crest'
 import { Book, Check, Clipboard, Lock, Play } from '@/components/ui/Icon'
-import { getCourseById } from '@/data/courses'
+import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
 import { formatPrice, cn } from '@/lib/utils'
 import { courseFormatLabel } from '@/lib/labels'
@@ -63,6 +63,7 @@ function LessonPlayer({ lesson }: { lesson: Lesson }) {
 
 export default function CourseDetailPage() {
   const { id = '' } = useParams()
+  const { getCourseById } = useCourses()
   const course = getCourseById(id)
   const { isOwned } = usePurchases()
   const owned = course ? isOwned(course.id) : false

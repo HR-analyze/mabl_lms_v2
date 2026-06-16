@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { Crest } from '@/components/brand/Crest'
 import { Check, Lock } from '@/components/ui/Icon'
-import { getCourseById } from '@/data/courses'
+import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
 import { useAuth } from '@/context/AuthContext'
 import { formatPrice } from '@/lib/utils'
@@ -16,6 +16,7 @@ import { courseFormatLabel } from '@/lib/labels'
 export default function CheckoutPage() {
   const [params] = useSearchParams()
   const courseId = params.get('course') || ''
+  const { getCourseById } = useCourses()
   const course = getCourseById(courseId)
   const { purchaseCourse, isOwned, paymentProvider } = usePurchases()
   const { user } = useAuth()
