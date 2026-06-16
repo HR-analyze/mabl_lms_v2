@@ -2,11 +2,14 @@ import { Link } from 'react-router-dom'
 import { Container, SectionHeading } from '@/components/ui/Section'
 import { Badge } from '@/components/ui/Badge'
 import { ArrowRight, Clipboard } from '@/components/ui/Icon'
-import { surveys } from '@/data/surveys'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { useCourses } from '@/context/CoursesContext'
 
 export default function SurveysPage() {
   const { getCourseById } = useCourses()
+  const { data } = useAsync(() => api.surveys.list(), [])
+  const surveys = data ?? []
   return (
     <div className="py-14 md:py-20">
       <Container>

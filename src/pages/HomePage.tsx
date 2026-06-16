@@ -5,8 +5,8 @@ import { Badge } from '@/components/ui/Badge'
 import { CourseCard } from '@/components/CourseCard'
 import { Crest } from '@/components/brand/Crest'
 import { ArrowRight, ArrowUpRight, Clock, Pin } from '@/components/ui/Icon'
-import { news } from '@/data/news'
-import { getNextWebinar } from '@/data/events'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
 import { formatDate, formatDateTime, formatPrice } from '@/lib/utils'
@@ -21,9 +21,10 @@ const stats = [
 export default function HomePage() {
   const { isOwned } = usePurchases()
   const { courses } = useCourses()
-  const webinar = getNextWebinar()
+  const { data: webinar } = useAsync(() => api.events.next(), [])
+  const { data: newsData } = useAsync(() => api.news.list(), [])
   const featured = courses.slice(0, 3)
-  const latestNews = news.slice(0, 3)
+  const latestNews = (newsData ?? []).slice(0, 3)
 
   return (
     <div>
@@ -74,6 +75,7 @@ export default function HomePage() {
       </section>
 
       {/* NEXT WEBINAR */}
+      {webinar && (
       <section className="py-20 md:py-24">
         <Container>
           <div className="overflow-hidden rounded-card border border-ink-10">
@@ -112,6 +114,7 @@ export default function HomePage() {
           </div>
         </Container>
       </section>
+      )}
 
       {/* COURSES */}
       <section className="border-t border-ink-10 bg-ink-5 py-20 md:py-24">

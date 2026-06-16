@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { Container, SectionHeading } from '@/components/ui/Section'
 import { Badge } from '@/components/ui/Badge'
 import { Document } from '@/components/ui/Icon'
-import { materials } from '@/data/materials'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { useCourses } from '@/context/CoursesContext'
 import { formatDate, cn } from '@/lib/utils'
 import type { MaterialType } from '@/types'
@@ -12,11 +13,13 @@ const types: (MaterialType | 'Все')[] = ['Все', 'PDF', 'Шаблон', 'П
 
 export default function MaterialsPage() {
   const { getCourseById } = useCourses()
+  const { data } = useAsync(() => api.materials.list(), [])
+  const materials = useMemo(() => data ?? [], [data])
   const [active, setActive] = useState<MaterialType | 'Все'>('Все')
 
   const filtered = useMemo(
     () => (active === 'Все' ? materials : materials.filter((m) => m.type === active)),
-    [active],
+    [active, materials],
   )
 
   return (

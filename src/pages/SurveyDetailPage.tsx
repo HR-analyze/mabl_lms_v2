@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Input'
 import { Check } from '@/components/ui/Icon'
 import { Crest } from '@/components/brand/Crest'
-import { getSurveyById } from '@/data/surveys'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { cn } from '@/lib/utils'
 import type { SurveyQuestion } from '@/types'
 
@@ -14,11 +15,15 @@ type AnswerValue = string | string[] | number
 
 export default function SurveyDetailPage() {
   const { id = '' } = useParams()
-  const survey = getSurveyById(id)
+  const { data: survey, loading } = useAsync(() => api.surveys.get(id), [id])
 
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({})
   const [errors, setErrors] = useState<Record<string, boolean>>({})
   const [submitted, setSubmitted] = useState(false)
+
+  if (loading) {
+    return <Container className="py-24 text-center text-ink-60">Загрузка…</Container>
+  }
 
   if (!survey) {
     return (

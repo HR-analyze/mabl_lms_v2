@@ -3,6 +3,11 @@ import { coursesApi } from './courses'
 import { usersApi } from './users'
 import { ordersApi } from './orders'
 import { eventsApi } from './events'
+import { newsApi } from './news'
+import { materialsApi } from './materials'
+import { surveysApi } from './surveys'
+import { forumApi } from './forum'
+import { notificationsApi } from './notifications'
 
 /**
  * Единая точка доступа к данным приложения.
@@ -17,6 +22,11 @@ export const api = {
   users: usersApi,
   orders: ordersApi,
   events: eventsApi,
+  news: newsApi,
+  materials: materialsApi,
+  surveys: surveysApi,
+  forum: forumApi,
+  notifications: notificationsApi,
 }
 
 export { USE_MOCK, API_URL, ApiError } from './config'
