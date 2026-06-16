@@ -1,0 +1,175 @@
+import { Link } from 'react-router-dom'
+import { Container, SectionHeading } from '@/components/ui/Section'
+import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { CourseCard } from '@/components/CourseCard'
+import { Crest } from '@/components/brand/Crest'
+import { ArrowRight, ArrowUpRight, Clock, Pin } from '@/components/ui/Icon'
+import { courses } from '@/data/courses'
+import { news } from '@/data/news'
+import { getNextWebinar } from '@/data/events'
+import { usePurchases } from '@/context/PurchaseContext'
+import { formatDate, formatDateTime, formatPrice } from '@/lib/utils'
+
+const stats = [
+  { value: '6', label: 'Флагманских программ' },
+  { value: '120+', label: 'Часов практики' },
+  { value: '15', label: 'Преподавателей' },
+  { value: '2 400', label: 'Слушателей' },
+]
+
+export default function HomePage() {
+  const { isOwned } = usePurchases()
+  const webinar = getNextWebinar()
+  const featured = courses.slice(0, 3)
+  const latestNews = news.slice(0, 3)
+
+  return (
+    <div>
+      {/* HERO */}
+      <section className="relative overflow-hidden border-b border-ink-10 bg-neft text-wisdom">
+        <div className="brand-pattern absolute inset-0 opacity-[0.06]" />
+        <Container className="relative py-24 md:py-32">
+          <div className="grid items-center gap-16 lg:grid-cols-[1.15fr_0.85fr]">
+            <div>
+              <p className="eyebrow mb-6 text-wisdom/50">Sapere · Ducere — Знать и вести</p>
+              <h1 className="display-title text-4xl md:text-6xl">
+                Международная академия бизнес-лидерства
+              </h1>
+              <p className="mt-7 max-w-xl text-lg leading-relaxed text-wisdom/70">
+                Академическое образование для руководителей нового поколения. Стратегия,
+                финансы, переговоры и лидерство — в строгой образовательной традиции МАБЛ.
+              </p>
+              <div className="mt-10 flex flex-wrap gap-4">
+                <Button to="/courses" size="lg">
+                  Каталог программ
+                  <ArrowRight width={18} height={18} />
+                </Button>
+                <Button to="/login" size="lg" variant="secondary" className="border-wisdom/30 text-wisdom hover:border-wisdom hover:bg-wisdom/5">
+                  Личный кабинет
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex justify-center lg:justify-end">
+              <div className="relative flex h-64 w-64 items-center justify-center rounded-card bg-wisdom md:h-80 md:w-80">
+                <Crest withBanner className="h-48 w-48 md:h-60 md:w-60" />
+              </div>
+            </div>
+          </div>
+        </Container>
+      </section>
+
+      {/* STATS */}
+      <section className="border-b border-ink-10">
+        <Container>
+          <div className="grid grid-cols-2 divide-x divide-ink-10 md:grid-cols-4">
+            {stats.map((s) => (
+              <div key={s.label} className="px-2 py-10 text-center">
+                <p className="font-serif text-4xl font-light text-neft">{s.value}</p>
+                <p className="mt-2 text-[0.72rem] uppercase tracking-wide text-ink-60">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* NEXT WEBINAR */}
+      <section className="py-20 md:py-24">
+        <Container>
+          <div className="overflow-hidden rounded-card border border-ink-10">
+            <div className="grid md:grid-cols-[1fr_0.9fr]">
+              <div className="p-8 md:p-12">
+                <Badge tone="ocean">Ближайший вебинар</Badge>
+                <h2 className="mt-5 font-serif text-3xl leading-tight text-neft">{webinar.title}</h2>
+                <p className="mt-4 max-w-md text-ink-60">{webinar.description}</p>
+
+                <div className="mt-7 flex flex-wrap gap-x-8 gap-y-3 text-sm text-ink-80">
+                  <span className="inline-flex items-center gap-2">
+                    <Clock width={16} height={16} className="text-ocean" />
+                    {formatDateTime(webinar.date)}
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <Pin width={16} height={16} className="text-ocean" />
+                    {webinar.location}
+                  </span>
+                </div>
+
+                <div className="mt-9 flex flex-wrap items-center gap-5">
+                  <Button to="/calendar" size="md">
+                    Записаться · {formatPrice(webinar.price ?? 0)}
+                  </Button>
+                  {webinar.speaker && (
+                    <span className="text-sm text-ink-60">Спикер: {webinar.speaker}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="relative flex items-center justify-center bg-neft p-12">
+                <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
+                <Crest className="relative h-28 w-28" onDark />
+              </div>
+            </div>
+          </div>
+        </Container>
+      </section>
+
+      {/* COURSES */}
+      <section className="border-t border-ink-10 bg-ink-5 py-20 md:py-24">
+        <Container>
+          <div className="flex items-end justify-between gap-6">
+            <SectionHeading eyebrow="Образование" title="Флагманские программы" />
+            <Link to="/courses" className="hidden items-center gap-2 text-sm uppercase tracking-wide text-ocean hover:text-oceanc-80 md:inline-flex">
+              Все курсы <ArrowUpRight width={16} height={16} />
+            </Link>
+          </div>
+          <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {featured.map((course) => (
+              <CourseCard key={course.id} course={course} owned={isOwned(course.id)} />
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* NEWS */}
+      <section className="py-20 md:py-24">
+        <Container>
+          <div className="flex items-end justify-between gap-6">
+            <SectionHeading eyebrow="Хроника академии" title="Новости" />
+            <Link to="/news" className="hidden items-center gap-2 text-sm uppercase tracking-wide text-ocean hover:text-oceanc-80 md:inline-flex">
+              Все новости <ArrowUpRight width={16} height={16} />
+            </Link>
+          </div>
+          <div className="mt-12 grid gap-px overflow-hidden rounded-card border border-ink-10 bg-ink-10 md:grid-cols-3">
+            {latestNews.map((item) => (
+              <Link key={item.id} to={`/news/${item.id}`} className="group bg-wisdom p-8 transition-colors hover:bg-ink-5">
+                <Badge tone="outline">{item.category}</Badge>
+                <p className="mt-4 text-[0.72rem] uppercase tracking-wide text-ink-40">{formatDate(item.date)}</p>
+                <h3 className="mt-2 font-serif text-xl leading-snug text-neft group-hover:text-ocean">{item.title}</h3>
+                <p className="mt-3 text-sm text-ink-60">{item.excerpt}</p>
+              </Link>
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* CTA */}
+      <section className="border-t border-ink-10 bg-ocean text-wisdom">
+        <Container className="py-20 text-center md:py-24">
+          <p className="eyebrow mb-5 text-wisdom/60">Поступление открыто</p>
+          <h2 className="display-title mx-auto max-w-3xl text-3xl md:text-5xl">
+            Начните обучение в МАБЛ
+          </h2>
+          <p className="mx-auto mt-6 max-w-xl text-wisdom/75">
+            Выберите программу, оформите доступ и присоединитесь к сообществу лидеров академии.
+          </p>
+          <div className="mt-10 flex justify-center gap-4">
+            <Button to="/courses" size="lg" variant="dark">
+              Выбрать программу
+            </Button>
+          </div>
+        </Container>
+      </section>
+    </div>
+  )
+}

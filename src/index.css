@@ -1,0 +1,82 @@
+@import './styles/fonts.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-wisdom text-neft font-serif antialiased;
+    font-weight: 400;
+  }
+
+  ::selection {
+    background: #3552af;
+    color: #ffffff;
+  }
+
+  /* Тонкий, академичный фокус — без SaaS-свечения */
+  *:focus-visible {
+    outline: 2px solid #3552af;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Крупные заголовки с разрядкой — фирменный приём бренда */
+  .eyebrow {
+    @apply text-[0.72rem] uppercase tracking-title text-ink-60;
+    font-weight: 400;
+  }
+
+  .display-title {
+    @apply font-serif uppercase tracking-title leading-[1.05] text-neft;
+    font-weight: 300;
+  }
+
+  .hairline {
+    @apply border-ink-10;
+  }
+
+  /* Базовая ссылка-подчёркивание в академическом стиле */
+  .link-underline {
+    @apply relative text-neft no-underline;
+  }
+  .link-underline::after {
+    content: '';
+    @apply absolute left-0 -bottom-0.5 h-px w-0 bg-ocean transition-all duration-300;
+  }
+  .link-underline:hover::after {
+    @apply w-full;
+  }
+
+  /* Фоновый паттерн бренда — едва заметный */
+  .brand-pattern {
+    background-image: url('/brand/pattern-tile.png');
+    background-size: 360px;
+    background-repeat: repeat;
+  }
+}
+
+/* Тонкий скролл, в тон бренду */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d7d7db;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9a9aa0;
+}

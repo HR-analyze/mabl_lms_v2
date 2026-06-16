@@ -1,0 +1,142 @@
+// Доменные типы LMS МАБЛ
+
+export type CourseFormat = 'scorm' | 'video' | 'longread'
+
+export type CourseLevel = 'Базовый' | 'Продвинутый' | 'Экспертный'
+
+export interface Lesson {
+  id: string
+  title: string
+  format: CourseFormat
+  duration: string
+  completed?: boolean
+}
+
+export interface CourseModule {
+  id: string
+  title: string
+  lessons: Lesson[]
+}
+
+export interface Course {
+  id: string
+  title: string
+  subtitle: string
+  description: string
+  format: CourseFormat
+  level: CourseLevel
+  instructor: string
+  durationHours: number
+  lessonsCount: number
+  price: number
+  /** Прогресс в процентах (0–100) */
+  progress: number
+  modules: CourseModule[]
+  /** id связанного опросника, если есть */
+  surveyId?: string
+  tags: string[]
+}
+
+export type NewsCategory = 'Академия' | 'Вебинары' | 'Курсы' | 'События'
+
+export interface NewsItem {
+  id: string
+  title: string
+  excerpt: string
+  body: string[]
+  category: NewsCategory
+  date: string // ISO
+  readingTime: string
+  cover?: string
+}
+
+export type MaterialType = 'PDF' | 'Шаблон' | 'Презентация' | 'Чек-лист' | 'Видео'
+
+export interface Material {
+  id: string
+  title: string
+  description: string
+  type: MaterialType
+  size: string
+  date: string
+  courseId?: string
+  body?: string[]
+}
+
+export type CalendarEventType = 'Вебинар' | 'Дедлайн' | 'Мероприятие'
+
+export interface CalendarEvent {
+  id: string
+  title: string
+  type: CalendarEventType
+  date: string // ISO datetime
+  durationMin?: number
+  speaker?: string
+  location: string
+  description: string
+  price?: number
+  /** требуется ли запись */
+  registrable?: boolean
+}
+
+export type NotificationKind = 'course' | 'event' | 'forum' | 'system' | 'survey'
+
+export interface AppNotification {
+  id: string
+  kind: NotificationKind
+  title: string
+  text: string
+  date: string
+  read: boolean
+  href?: string
+}
+
+export interface ForumSection {
+  id: string
+  title: string
+  description: string
+  topicsCount: number
+}
+
+export interface ForumComment {
+  id: string
+  author: string
+  date: string
+  text: string
+}
+
+export interface ForumTopic {
+  id: string
+  sectionId: string
+  title: string
+  author: string
+  date: string
+  body: string
+  comments: ForumComment[]
+}
+
+// Опросники
+export type SurveyQuestionType = 'single' | 'multiple' | 'scale' | 'text'
+
+export interface SurveyQuestion {
+  id: string
+  type: SurveyQuestionType
+  title: string
+  options?: string[]
+  required?: boolean
+}
+
+export interface Survey {
+  id: string
+  title: string
+  description: string
+  questions: SurveyQuestion[]
+  relatedCourseId?: string
+}
+
+export interface User {
+  id: string
+  name: string
+  email: string
+  role: string
+}
