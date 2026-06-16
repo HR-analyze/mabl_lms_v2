@@ -53,9 +53,7 @@ export default function HomePage() {
             </div>
 
             <div className="flex justify-center lg:justify-end">
-              <div className="relative flex h-64 w-64 items-center justify-center rounded-card bg-wisdom md:h-80 md:w-80">
-                <Crest withBanner className="h-48 w-48 md:h-60 md:w-60" />
-              </div>
+              <Crest withBanner className="h-60 w-60 md:h-80 md:w-80" />
             </div>
           </div>
         </Container>
