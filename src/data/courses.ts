@@ -198,10 +198,10 @@ export const courses: Course[] = [
   },
   {
     id: 'manager-intro',
-    title: 'Кто такой менеджер',
+    title: 'Эспрессо-тоник тропики',
     subtitle: 'Вводный интерактивный тренинг',
     description:
-      'Короткий интерактивный SCORM-тренинг о роли менеджера: задачи, ответственность и ключевые навыки. Демонстрация загрузки SCORM-пакета на платформу.',
+      'Короткий интерактивный SCORM-тренинг с пошаговым видео-рецептом. Демонстрация загрузки и проигрывания SCORM-пакета на платформе.',
     format: 'scorm',
     level: 'Базовый',
     instructor: 'МАБЛ',
@@ -217,7 +217,7 @@ export const courses: Course[] = [
         lessons: [
           {
             id: 'manager-intro-sco',
-            title: 'Кто такой менеджер',
+            title: 'Эспрессо-тоник тропики',
             format: 'scorm',
             duration: '1 ч',
             launchUrl: '/scorm/manager-intro/res/index.html',

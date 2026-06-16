@@ -7,7 +7,7 @@ import { USE_MOCK, http, mockDelay } from './config'
  * mock-реализация хранит данные в localStorage; http-реализация ходит на бэкенд.
  */
 
-const STORAGE_KEY = 'mabl.courses.v2'
+const STORAGE_KEY = 'mabl.courses.v3'
 
 function readStore(): Course[] {
   try {
