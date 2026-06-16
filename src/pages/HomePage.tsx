@@ -34,9 +34,9 @@ export default function HomePage() {
         <Container className="relative py-16 md:py-32">
           <div className="grid items-center gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16">
             <div>
-              <p className="eyebrow mb-6 text-wisdom/50">Sapere · Ducere — Знать и вести</p>
+              <p className="eyebrow mb-6 text-wisdom/50">Sapere · Ducere — Знать, чтобы лидировать</p>
               <h1 className="display-title text-3xl sm:text-4xl md:text-6xl">
-                Международная академия бизнес-лидерства
+                Международная академия бизнес лидерства
               </h1>
               <p className="mt-7 max-w-xl text-lg leading-relaxed text-wisdom/70">
                 Академическое образование для руководителей нового поколения. Стратегия,

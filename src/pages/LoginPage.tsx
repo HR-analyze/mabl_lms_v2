@@ -68,7 +68,7 @@ export default function LoginPage() {
         </div>
         <div className="relative">
           <Crest withBanner className="mb-10 h-32 w-32" onDark />
-          <h2 className="display-title text-4xl">Знать и вести</h2>
+          <h2 className="display-title text-4xl">Знать, чтобы лидировать</h2>
           <p className="mt-5 max-w-sm text-wisdom/60">
             Личный кабинет слушателя МАБЛ: курсы, прогресс обучения, вебинары и сообщество
             академии в едином пространстве.
