@@ -13,11 +13,21 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    /* Не давать мобильным браузерам самовольно увеличивать шрифт */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   body {
     @apply bg-wisdom text-neft font-serif antialiased;
     font-weight: 400;
+    /* Защита от горизонтального скролла на узких экранах */
+    overflow-x: hidden;
+  }
+
+  /* Длинные слова/URL не ломают вёрстку на телефоне */
+  h1, h2, h3, p, a, span, li {
+    overflow-wrap: break-word;
   }
 
   ::selection {
@@ -40,10 +50,20 @@
   }
 
   /* Цвет наследуется от родителя — заголовок одинаково работает
-     и на светлом, и на тёмном фоне (см. hero / CTA). */
+     и на светлом, и на тёмном фоне (см. hero / CTA).
+     Трекинг на мобайле меньше — иначе длинные слова дают горизонтальный скролл. */
   .display-title {
-    @apply font-serif uppercase tracking-title leading-[1.05];
+    @apply font-serif uppercase leading-[1.06];
     font-weight: 300;
+    letter-spacing: 0.06em;
+    overflow-wrap: break-word;
+    text-wrap: balance;
+  }
+  @media (min-width: 768px) {
+    .display-title {
+      letter-spacing: 0.18em;
+      line-height: 1.05;
+    }
   }
 
   .hairline {

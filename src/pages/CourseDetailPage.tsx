@@ -172,9 +172,9 @@ export default function CourseDetailPage() {
                               )}>
                                 {lesson.completed ? <Check width={14} height={14} /> : <Book width={13} height={13} />}
                               </span>
-                              <span className="flex-1 text-sm text-neft">{lesson.title}</span>
-                              <Badge tone="outline">{courseFormatLabel[lesson.format]}</Badge>
-                              <span className="hidden w-16 text-right text-xs text-ink-40 sm:block">{lesson.duration}</span>
+                              <span className="min-w-0 flex-1 text-sm text-neft">{lesson.title}</span>
+                              <span className="shrink-0"><Badge tone="outline">{courseFormatLabel[lesson.format]}</Badge></span>
+                              <span className="hidden w-16 shrink-0 text-right text-xs text-ink-40 sm:block">{lesson.duration}</span>
                               {!owned && <Lock width={14} height={14} className="text-ink-40" />}
                             </button>
                           </li>

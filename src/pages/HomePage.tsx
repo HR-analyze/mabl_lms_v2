@@ -29,23 +29,23 @@ export default function HomePage() {
       {/* HERO */}
       <section className="relative overflow-hidden border-b border-ink-10 bg-neft text-wisdom">
         <div className="brand-pattern absolute inset-0 opacity-[0.06]" />
-        <Container className="relative py-24 md:py-32">
-          <div className="grid items-center gap-16 lg:grid-cols-[1.15fr_0.85fr]">
+        <Container className="relative py-16 md:py-32">
+          <div className="grid items-center gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16">
             <div>
               <p className="eyebrow mb-6 text-wisdom/50">Sapere · Ducere — Знать и вести</p>
-              <h1 className="display-title text-4xl md:text-6xl">
+              <h1 className="display-title text-3xl sm:text-4xl md:text-6xl">
                 Международная академия бизнес-лидерства
               </h1>
               <p className="mt-7 max-w-xl text-lg leading-relaxed text-wisdom/70">
                 Академическое образование для руководителей нового поколения. Стратегия,
                 финансы, переговоры и лидерство — в строгой образовательной традиции МАБЛ.
               </p>
-              <div className="mt-10 flex flex-wrap gap-4">
-                <Button to="/courses" size="lg">
+              <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-4">
+                <Button to="/courses" size="lg" className="w-full sm:w-auto">
                   Каталог программ
                   <ArrowRight width={18} height={18} />
                 </Button>
-                <Button to="/login" size="lg" variant="secondary" className="border-wisdom/30 text-wisdom hover:border-wisdom hover:bg-wisdom/5">
+                <Button to="/login" size="lg" variant="secondary" className="w-full border-wisdom/30 text-wisdom hover:border-wisdom hover:bg-wisdom/5 sm:w-auto">
                   Личный кабинет
                 </Button>
               </div>

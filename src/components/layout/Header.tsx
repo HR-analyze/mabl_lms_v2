@@ -21,7 +21,9 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-ink-10 bg-wisdom/95 backdrop-blur">
       <div className="mx-auto flex h-20 max-w-content items-center justify-between px-6 md:px-10">
-        <Logo />
+        {/* Полный логотип c sm+, только герб на самых узких экранах */}
+        <Logo variant="full" className="hidden sm:inline-flex" />
+        <Logo variant="crest" className="sm:hidden" />
 
         <nav className="hidden items-center gap-9 lg:flex">
           {publicNav.map((item) => (
