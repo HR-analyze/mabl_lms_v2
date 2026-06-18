@@ -35,7 +35,7 @@ export function Footer() {
           <div>
             <Logo onDark />
             <p className="mt-5 max-w-xs text-sm leading-relaxed text-wisdom/60">
-              Международная академия бизнес-лидерства. Sapere · Ducere — знать и вести.
+              Международная академия бизнес лидерства. Sapere · Ducere — Знать, чтобы лидировать.
             </p>
           </div>
 
@@ -56,7 +56,7 @@ export function Footer() {
         </div>
 
         <div className="mt-14 flex flex-col gap-3 border-t border-wisdom/10 pt-6 text-[0.72rem] text-wisdom/40 md:flex-row md:items-center md:justify-between">
-          <p>© {new Date().getFullYear()} МАБЛ · Международная академия бизнес-лидерства</p>
+          <p>© {new Date().getFullYear()} МАБЛ · Международная академия бизнес лидерства</p>
           <p className="uppercase tracking-wide">Sapere · Ducere</p>
         </div>
       </div>

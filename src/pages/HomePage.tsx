@@ -5,9 +5,9 @@ import { Badge } from '@/components/ui/Badge'
 import { CourseCard } from '@/components/CourseCard'
 import { Crest } from '@/components/brand/Crest'
 import { ArrowRight, ArrowUpRight, Clock, Pin } from '@/components/ui/Icon'
-import { courses } from '@/data/courses'
-import { news } from '@/data/news'
-import { getNextWebinar } from '@/data/events'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
+import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
 import { formatDate, formatDateTime, formatPrice } from '@/lib/utils'
 
@@ -20,9 +20,11 @@ const stats = [
 
 export default function HomePage() {
   const { isOwned } = usePurchases()
-  const webinar = getNextWebinar()
+  const { courses } = useCourses()
+  const { data: webinar } = useAsync(() => api.events.next(), [])
+  const { data: newsData } = useAsync(() => api.news.list(), [])
   const featured = courses.slice(0, 3)
-  const latestNews = news.slice(0, 3)
+  const latestNews = (newsData ?? []).slice(0, 3)
 
   return (
     <div>
@@ -52,9 +54,7 @@ export default function HomePage() {
             </div>
 
             <div className="flex justify-center lg:justify-end">
-              <div className="relative flex h-64 w-64 items-center justify-center rounded-card bg-wisdom md:h-80 md:w-80">
-                <Crest withBanner className="h-48 w-48 md:h-60 md:w-60" />
-              </div>
+              <Crest withBanner className="h-60 w-60 md:h-80 md:w-80" />
             </div>
           </div>
         </Container>
@@ -75,6 +75,7 @@ export default function HomePage() {
       </section>
 
       {/* NEXT WEBINAR */}
+      {webinar && (
       <section className="py-20 md:py-24">
         <Container>
           <div className="overflow-hidden rounded-card border border-ink-10">
@@ -107,12 +108,13 @@ export default function HomePage() {
 
               <div className="relative flex items-center justify-center bg-neft p-12">
                 <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
-                <Crest className="relative h-28 w-28" onDark />
+                <Crest className="relative h-36 w-36" />
               </div>
             </div>
           </div>
         </Container>
       </section>
+      )}
 
       {/* COURSES */}
       <section className="border-t border-ink-10 bg-ink-5 py-20 md:py-24">

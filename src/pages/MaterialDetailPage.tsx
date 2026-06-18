@@ -3,13 +3,19 @@ import { Container } from '@/components/ui/Section'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Document } from '@/components/ui/Icon'
-import { getMaterialById } from '@/data/materials'
-import { getCourseById } from '@/data/courses'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
+import { useCourses } from '@/context/CoursesContext'
 import { formatDate } from '@/lib/utils'
 
 export default function MaterialDetailPage() {
   const { id = '' } = useParams()
-  const material = getMaterialById(id)
+  const { getCourseById } = useCourses()
+  const { data: material, loading } = useAsync(() => api.materials.get(id), [id])
+
+  if (loading) {
+    return <Container className="py-24 text-center text-ink-60">Загрузка…</Container>
+  }
 
   if (!material) {
     return (

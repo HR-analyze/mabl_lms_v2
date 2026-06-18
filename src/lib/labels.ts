@@ -1,4 +1,4 @@
-import type { CourseFormat, NotificationKind } from '@/types'
+import type { AdminUserStatus, CourseFormat, NotificationKind, OrderStatus } from '@/types'
 
 export const courseFormatLabel: Record<CourseFormat, string> = {
   scorm: 'SCORM',
@@ -12,4 +12,16 @@ export const notificationKindLabel: Record<NotificationKind, string> = {
   forum: 'Форум',
   system: 'Система',
   survey: 'Опрос',
+}
+
+export const orderStatusLabel: Record<OrderStatus, string> = {
+  paid: 'Оплачен',
+  pending: 'Ожидает',
+  refunded: 'Возврат',
+}
+
+export const adminUserStatusLabel: Record<AdminUserStatus, string> = {
+  active: 'Активен',
+  invited: 'Приглашён',
+  blocked: 'Заблокирован',
 }

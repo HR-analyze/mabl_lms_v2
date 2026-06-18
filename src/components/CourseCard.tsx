@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom'
 import type { Course } from '@/types'
-import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { ProgressBar } from './ui/ProgressBar'
 import { ArrowRight, Lock } from './ui/Icon'
+import { Badge } from './ui/Badge'
 import { courseFormatLabel } from '@/lib/labels'
 import { formatPrice, cn } from '@/lib/utils'
 import { courses } from '@/data/courses'
@@ -72,12 +72,11 @@ export function CourseCard({ course, owned }: CourseCardProps) {
           <span>{course.durationHours} ч</span>
         </div>
 
-        <h3 className="font-serif text-xl leading-tight text-neft">
+        <p className="text-sm text-ink-60">
           <Link to={`/courses/${course.id}`} className="hover:text-ocean">
-            {course.title}
+            {course.subtitle}
           </Link>
-        </h3>
-        <p className="mt-2 text-sm text-ink-60">{course.subtitle}</p>
+        </p>
 
         <div className="mt-4 flex-1" />
 
