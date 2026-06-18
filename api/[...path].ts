@@ -26,9 +26,19 @@ import { adminUsers } from '../src/data/users.js'
  * новости, материалы, форум, опросники, заказы, участники) пока отдаются из
  * mock-модулей, единых с фронтендом.
  */
+/** Vercel: включить парсинг тела запроса (нужно явно в ESM). */
+export const config = {
+  api: { bodyParser: { sizeLimit: '1mb' } },
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Сегменты пути берём из req.url (надёжнее, чем req.query.path: не зависит
-  // от того, как Vercel разбирает динамический маршрут [...path]).
+  // CORS — нужен для POST/PUT/DELETE из браузера.
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  if (req.method === 'OPTIONS') return res.status(204).end()
+
+  // Сегменты пути берём из req.url; если Vercel уже срезал /api/ — не страшно.
   const rawUrl = req.url || ''
   const pathname = rawUrl.split('?')[0]
   let segments = pathname.replace(/^\/+/, '').split('/').filter(Boolean)
@@ -42,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const method = (req.method || 'GET').toUpperCase()
   const path = segments.join('/')
+  console.log(`[api] ${method} /${path} | url=${req.url}`)
 
   try {
     // ---------- AUTH ----------
