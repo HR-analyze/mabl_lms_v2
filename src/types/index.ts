@@ -10,6 +10,8 @@ export interface Lesson {
   format: CourseFormat
   duration: string
   completed?: boolean
+  /** URL точки входа SCORM-пакета (res/index.html) для интерактивных уроков. */
+  launchUrl?: string
 }
 
 export interface CourseModule {
@@ -134,9 +136,50 @@ export interface Survey {
   relatedCourseId?: string
 }
 
+/** Уровень доступа пользователя в системе. */
+export type UserRole = 'admin' | 'student'
+
 export interface User {
   id: string
   name: string
   email: string
+  /** Отображаемая должность/статус (например, «Слушатель академии»). */
   role: string
+  /** Уровень доступа: администратор или слушатель. */
+  kind: UserRole
+}
+
+// Администрирование: участники и заказы
+export type AdminUserStatus = 'active' | 'invited' | 'blocked'
+
+/** Запись об участнике платформы для админ-панели. */
+export interface AdminUser {
+  id: string
+  name: string
+  email: string
+  role: UserRole
+  status: AdminUserStatus
+  /** Дата регистрации (ISO). */
+  registeredAt: string
+  /** Последняя активность (ISO). */
+  lastActiveAt: string
+  /** id программ, на которые записан участник. */
+  enrolledCourseIds: string[]
+  /** Средний прогресс по программам, %. */
+  avgProgress: number
+}
+
+export type OrderStatus = 'paid' | 'pending' | 'refunded'
+export type PaymentMethod = 'Карта' | 'Счёт' | 'СБП'
+
+/** Заказ (покупка программы участником). */
+export interface Order {
+  id: string
+  userId: string
+  courseId: string
+  amount: number
+  /** Дата заказа (ISO). */
+  date: string
+  status: OrderStatus
+  method: PaymentMethod
 }

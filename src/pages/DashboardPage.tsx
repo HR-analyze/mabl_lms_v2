@@ -1,12 +1,13 @@
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { NotificationItem } from '@/components/NotificationItem'
 import { ArrowRight, ArrowUpRight, Calendar, Clipboard, Document, Grid } from '@/components/ui/Icon'
-import { courses } from '@/data/courses'
-import { events } from '@/data/events'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
+import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
 import { useNotifications } from '@/context/NotificationsContext'
 import { useAuth } from '@/context/AuthContext'
@@ -21,16 +22,21 @@ const quickLinks = [
 ]
 
 export default function DashboardPage() {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
+  const { courses } = useCourses()
   const { ownedCourseIds } = usePurchases()
   const { items } = useNotifications()
+  const { data: eventsData } = useAsync(() => api.events.list(), [])
+
+  // У администратора нет персонального обучения — его «кабинет» это админ-панель.
+  if (isAdmin) return <Navigate to="/admin" replace />
 
   const myCourses = courses.filter((c) => ownedCourseIds.includes(c.id))
   const overall = myCourses.length
     ? Math.round(myCourses.reduce((sum, c) => sum + c.progress, 0) / myCourses.length)
     : 0
 
-  const upcoming = [...events]
+  const upcoming = [...(eventsData ?? [])]
     .filter((e) => new Date(e.date) >= new Date('2026-06-16'))
     .sort((a, b) => +new Date(a.date) - +new Date(b.date))
     .slice(0, 3)

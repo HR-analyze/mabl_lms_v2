@@ -3,7 +3,8 @@ import { Container, SectionHeading } from '@/components/ui/Section'
 import { EventCard } from '@/components/EventCard'
 import { Badge } from '@/components/ui/Badge'
 import { Check } from '@/components/ui/Icon'
-import { events } from '@/data/events'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { usePurchases } from '@/context/PurchaseContext'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
@@ -20,13 +21,15 @@ const tabLabel: Record<CalendarEventType | 'Все', string> = {
 export default function CalendarPage() {
   const { isRegistered, registerEvent } = usePurchases()
   const { user } = useAuth()
+  const { data } = useAsync(() => api.events.list(), [])
+  const events = useMemo(() => data ?? [], [data])
   const [active, setActive] = useState<CalendarEventType | 'Все'>('Все')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [confirmation, setConfirmation] = useState('')
 
   const sorted = useMemo(
     () => [...events].sort((a, b) => +new Date(a.date) - +new Date(b.date)),
-    [],
+    [events],
   )
   const filtered = active === 'Все' ? sorted : sorted.filter((e) => e.type === active)
 

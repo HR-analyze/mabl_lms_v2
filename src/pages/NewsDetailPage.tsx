@@ -3,12 +3,19 @@ import { Container } from '@/components/ui/Section'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Crest } from '@/components/brand/Crest'
-import { getNewsById, news } from '@/data/news'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { formatDate } from '@/lib/utils'
 
 export default function NewsDetailPage() {
   const { id = '' } = useParams()
-  const item = getNewsById(id)
+  const { data, loading } = useAsync(() => api.news.list(), [])
+  const news = data ?? []
+  const item = news.find((n) => n.id === id)
+
+  if (loading) {
+    return <Container className="py-24 text-center text-ink-60">Загрузка…</Container>
+  }
 
   if (!item) {
     return (

@@ -3,18 +3,21 @@ import { Link } from 'react-router-dom'
 import { Container, SectionHeading } from '@/components/ui/Section'
 import { Badge } from '@/components/ui/Badge'
 import { Crest } from '@/components/brand/Crest'
-import { news } from '@/data/news'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { formatDate, cn } from '@/lib/utils'
 import type { NewsCategory } from '@/types'
 
 const categories: (NewsCategory | 'Все')[] = ['Все', 'Академия', 'Вебинары', 'Курсы', 'События']
 
 export default function NewsPage() {
+  const { data } = useAsync(() => api.news.list(), [])
+  const news = useMemo(() => data ?? [], [data])
   const [active, setActive] = useState<NewsCategory | 'Все'>('Все')
 
   const filtered = useMemo(
     () => (active === 'Все' ? news : news.filter((n) => n.category === active)),
-    [active],
+    [active, news],
   )
   const [lead, ...rest] = filtered
 

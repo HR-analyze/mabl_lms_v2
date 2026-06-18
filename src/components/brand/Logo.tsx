@@ -31,7 +31,7 @@ export function Logo({ variant = 'full', className, onDark = false, to = '/' }: 
           >
             <span>Международная</span>
             <span>академия</span>
-            <span>бизнес-лидерства</span>
+            <span>бизнес лидерства</span>
           </span>
         </span>
       )}

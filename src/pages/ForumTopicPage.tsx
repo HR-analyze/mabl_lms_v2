@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Container } from '@/components/ui/Section'
@@ -6,18 +6,28 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Textarea } from '@/components/ui/Input'
 import { User } from '@/components/ui/Icon'
-import { getTopicById, getSectionById } from '@/data/forum'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { useAuth } from '@/context/AuthContext'
 import { formatDateTime } from '@/lib/utils'
 import type { ForumComment } from '@/types'
 
 export default function ForumTopicPage() {
   const { id = '' } = useParams()
-  const topic = getTopicById(id)
+  const { data: topic, loading } = useAsync(() => api.forum.getTopic(id), [id])
+  const { data: sectionsData } = useAsync(() => api.forum.listSections(), [])
   const { user } = useAuth()
 
-  const [comments, setComments] = useState<ForumComment[]>(topic?.comments ?? [])
+  const [comments, setComments] = useState<ForumComment[]>([])
   const [text, setText] = useState('')
+
+  useEffect(() => {
+    if (topic) setComments(topic.comments)
+  }, [topic])
+
+  if (loading) {
+    return <Container className="py-24 text-center text-ink-60">Загрузка…</Container>
+  }
 
   if (!topic) {
     return (
@@ -28,7 +38,7 @@ export default function ForumTopicPage() {
     )
   }
 
-  const section = getSectionById(topic.sectionId)
+  const section = (sectionsData ?? []).find((s) => s.id === topic.sectionId)
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
