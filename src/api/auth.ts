@@ -34,7 +34,7 @@ const DEMO_ACCOUNTS: DemoAccount[] = [
     label: 'Администратор',
     user: {
       id: 'u-adm',
-      name: 'Елена Северова',
+      name: 'Администратор',
       email: 'admin@mabl.ru',
       role: 'Администратор платформы',
       kind: 'admin',
