@@ -116,6 +116,12 @@ export default function CourseDetailPage() {
     )
   }
 
+  // Актуальный статус активного урока (из каталога, обновляется после SCORM).
+  const activeLessonFresh = course.modules
+    .flatMap((m) => m.lessons)
+    .find((l) => l.id === activeLesson?.id)
+  const lessonDone = activeLessonFresh?.completed ?? false
+
   return (
     <div>
       {/* Шапка курса */}
@@ -166,7 +172,20 @@ export default function CourseDetailPage() {
               </h2>
               {activeLesson ? (
                 owned ? (
-                  <LessonPlayer lesson={activeLesson} onScormStatus={handleScormStatus} />
+                  <div className="space-y-4">
+                    {lessonDone && (
+                      <div className="flex items-center gap-3 rounded-card border border-ocean/30 bg-oceanc-10 px-5 py-3.5">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ocean text-wisdom">
+                          <Check width={16} height={16} />
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold text-neft">Тренинг пройден</p>
+                          <p className="text-[0.78rem] text-ink-60">Урок «{activeLesson.title}» завершён.</p>
+                        </div>
+                      </div>
+                    )}
+                    <LessonPlayer lesson={activeLesson} onScormStatus={handleScormStatus} />
+                  </div>
                 ) : (
                   <div className="flex aspect-video flex-col items-center justify-center rounded-card border border-dashed border-ink-20 bg-ink-5 text-center">
                     <Lock width={30} height={30} className="text-ink-40" />
