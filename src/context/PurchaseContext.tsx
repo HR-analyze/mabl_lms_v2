@@ -1,19 +1,15 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { api } from '@/api'
+import { useAuth } from '@/context/AuthContext'
 import { mockPaymentProvider } from '@/lib/payments'
 import type { PaymentIntent, PaymentResult, PaymentProvider } from '@/lib/payments'
 
 /**
  * Управление доступом: купленные курсы и записи на события.
- * После «оплаты» курс/событие открывается. Состояние персистится локально.
- * Платёж идёт через абстракцию PaymentProvider (см. src/lib/payments.ts).
+ * Источник — слой данных `api.enrollments` (mock — localStorage, http — БД).
+ * После «оплаты» курс/событие открывается.
  */
-
-const OWNED_KEY = 'mabl.owned.courses'
-const EVENTS_KEY = 'mabl.registered.events'
-
-// Демо-слушатель уже владеет одним курсом (для наглядного прогресса в ЛК)
-const DEFAULT_OWNED = ['strategic-leadership']
 
 interface PurchaseContextValue {
   ownedCourseIds: string[]
@@ -29,29 +25,26 @@ interface PurchaseContextValue {
 
 const PurchaseContext = createContext<PurchaseContextValue | null>(null)
 
-function loadList(key: string, fallback: string[]): string[] {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as string[]) : fallback
-  } catch {
-    return fallback
-  }
-}
-
 export function PurchaseProvider({ children }: { children: ReactNode }) {
-  const [ownedCourseIds, setOwned] = useState<string[]>(() => loadList(OWNED_KEY, DEFAULT_OWNED))
-  const [registeredEventIds, setRegistered] = useState<string[]>(() => loadList(EVENTS_KEY, []))
+  const { user } = useAuth()
+  const [ownedCourseIds, setOwned] = useState<string[]>([])
+  const [registeredEventIds, setRegistered] = useState<string[]>([])
 
+  // Загружаем доступ при старте и при смене пользователя (в http-режиме доступ — персональный).
   useEffect(() => {
-    localStorage.setItem(OWNED_KEY, JSON.stringify(ownedCourseIds))
-  }, [ownedCourseIds])
-
-  useEffect(() => {
-    localStorage.setItem(EVENTS_KEY, JSON.stringify(registeredEventIds))
-  }, [registeredEventIds])
+    let active = true
+    api.enrollments.access().then((access) => {
+      if (!active) return
+      setOwned(access.courses)
+      setRegistered(access.events)
+    })
+    return () => {
+      active = false
+    }
+  }, [user?.id])
 
   const purchaseCourse = async (intent: PaymentIntent): Promise<PaymentResult> => {
-    const result = await mockPaymentProvider.pay(intent)
+    const result = await api.enrollments.purchaseCourse(intent)
     if (result.status === 'succeeded') {
       setOwned((prev) => (prev.includes(intent.itemId) ? prev : [...prev, intent.itemId]))
     }
@@ -59,14 +52,11 @@ export function PurchaseProvider({ children }: { children: ReactNode }) {
   }
 
   const registerEvent = async (eventId: string, intent?: PaymentIntent) => {
-    if (intent && intent.amount > 0) {
-      const result = await mockPaymentProvider.pay(intent)
-      if (result.status === 'succeeded') {
-        setRegistered((prev) => (prev.includes(eventId) ? prev : [...prev, eventId]))
-      }
-      return result
+    const result = await api.enrollments.registerEvent(eventId, intent)
+    if (!result || result.status === 'succeeded') {
+      setRegistered((prev) => (prev.includes(eventId) ? prev : [...prev, eventId]))
     }
-    setRegistered((prev) => (prev.includes(eventId) ? prev : [...prev, eventId]))
+    return result
   }
 
   const value = useMemo<PurchaseContextValue>(

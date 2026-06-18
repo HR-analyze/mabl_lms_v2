@@ -27,7 +27,7 @@ const J = (v: unknown) => JSON.stringify(v ?? null)
 
 async function run() {
   await sql.query(
-    'TRUNCATE courses, events, news, materials, surveys, forum_sections, forum_topics, notifications, users, orders, scorm_packages',
+    'TRUNCATE courses, events, news, materials, surveys, forum_sections, forum_topics, notifications, users, orders, scorm_packages, enrollments, event_registrations',
   )
 
   for (let i = 0; i < courses.length; i += 1) {
@@ -112,6 +112,16 @@ async function run() {
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [o.id, o.userId, o.courseId, o.amount, o.date, o.status, o.method],
     )
+  }
+
+  // Доступ к программам — из enrolledCourseIds участников.
+  for (const u of adminUsers) {
+    for (const courseId of u.enrolledCourseIds) {
+      await sql.query(
+        `INSERT INTO enrollments ("userId","courseId") VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [u.id, courseId],
+      )
+    }
   }
 
   console.log('✓ База наполнена демо-данными')

@@ -9,6 +9,7 @@ import { surveysApi } from './surveys'
 import { forumApi } from './forum'
 import { notificationsApi } from './notifications'
 import { scormApi } from './scorm'
+import { enrollmentsApi } from './enrollments'
 
 /**
  * Единая точка доступа к данным приложения.
@@ -29,6 +30,7 @@ export const api = {
   forum: forumApi,
   notifications: notificationsApi,
   scorm: scormApi,
+  enrollments: enrollmentsApi,
 }
 
 export { USE_MOCK, API_URL, ApiError } from './config'

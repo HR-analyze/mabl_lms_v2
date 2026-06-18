@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { sql } from './db'
-import { HttpError, getAuth, readBody, requireAdmin } from './http'
+import { HttpError, getAuth, readBody, requireAdmin, requireAuth } from './http'
 import { hashPassword, signToken, verifyPassword } from './auth'
 import { courses as seedCourses } from '../../src/data/courses'
 import type { Course } from '../../src/types'
@@ -130,6 +130,19 @@ export async function route(
   // --- Уведомления ---
   if (resource === 'notifications' && !a && method === 'GET') {
     return send(res, await listTable('notifications', 'date DESC'))
+  }
+
+  // --- Доступ слушателя (профиль) ---
+  if (resource === 'me') {
+    const auth = requireAuth(req)
+    if (a === 'access' && method === 'GET') return send(res, await getAccess(auth.sub))
+    if (a === 'courses' && b && c === 'purchase' && method === 'POST') {
+      return send(res, await purchaseCourse(auth.sub, b, req))
+    }
+    if (a === 'events' && b && c === 'register' && method === 'POST') {
+      return send(res, await registerEvent(auth.sub, b, req))
+    }
+    throw new HttpError(404, 'Не найдено.')
   }
 
   // --- Админ ---
@@ -294,6 +307,55 @@ async function me(req: VercelRequest): Promise<Json | null> {
   if (!auth) return null
   const { rows } = await sql.query('SELECT id,name,email,role,kind FROM users WHERE id=$1', [auth.sub])
   return (rows[0] as Json) ?? null
+}
+
+// ---------- доступ / покупки ----------
+
+async function getAccess(userId: string): Promise<{ courses: string[]; events: string[] }> {
+  const c = await sql.query('SELECT "courseId" FROM enrollments WHERE "userId"=$1', [userId])
+  const e = await sql.query('SELECT "eventId" FROM event_registrations WHERE "userId"=$1', [userId])
+  return {
+    courses: c.rows.map((r) => r.courseId as string),
+    events: e.rows.map((r) => r.eventId as string),
+  }
+}
+
+async function purchaseCourse(
+  userId: string,
+  courseId: string,
+  req: VercelRequest,
+): Promise<{ status: 'succeeded'; transactionId: string; message: string }> {
+  const { amount = 0, method = 'Карта' } = readBody<{ amount?: number; method?: string }>(req)
+  const course = await getById('courses', courseId)
+  if (!course) throw new HttpError(404, 'Программа не найдена.')
+  // Платёж имитируется (реальный PSP подключается отдельно), но заказ и доступ — настоящие.
+  const orderId = `ORD-${Date.now().toString(36).toUpperCase()}`
+  await sql.query(
+    `INSERT INTO orders (id,"userId","courseId",amount,date,status,method)
+     VALUES ($1,$2,$3,$4,CURRENT_DATE,'paid',$5)`,
+    [orderId, userId, courseId, amount, method],
+  )
+  await sql.query(
+    `INSERT INTO enrollments ("userId","courseId") VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+    [userId, courseId],
+  )
+  return { status: 'succeeded', transactionId: orderId, message: 'Оплата успешно проведена.' }
+}
+
+async function registerEvent(
+  userId: string,
+  eventId: string,
+  req: VercelRequest,
+): Promise<{ status: 'succeeded'; transactionId: string; message: string } | null> {
+  await sql.query(
+    `INSERT INTO event_registrations ("userId","eventId") VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+    [userId, eventId],
+  )
+  const { amount = 0 } = readBody<{ amount?: number }>(req)
+  if (amount > 0) {
+    return { status: 'succeeded', transactionId: `EVT-${Date.now().toString(36).toUpperCase()}`, message: 'Запись подтверждена.' }
+  }
+  return null
 }
 
 // ---------- users ----------

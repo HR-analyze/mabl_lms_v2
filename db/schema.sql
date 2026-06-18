@@ -121,3 +121,18 @@ CREATE TABLE IF NOT EXISTS scorm_packages (
   "fileCount" integer,
   "uploadedAt" timestamptz
 );
+
+-- Доступ слушателя к программам и записи на события.
+CREATE TABLE IF NOT EXISTS enrollments (
+  "userId" text,
+  "courseId" text,
+  "createdAt" timestamptz DEFAULT now(),
+  PRIMARY KEY ("userId", "courseId")
+);
+
+CREATE TABLE IF NOT EXISTS event_registrations (
+  "userId" text,
+  "eventId" text,
+  "createdAt" timestamptz DEFAULT now(),
+  PRIMARY KEY ("userId", "eventId")
+);
