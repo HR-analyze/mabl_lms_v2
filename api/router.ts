@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import bcrypt from 'bcryptjs'
 import { getSql } from './_db.js'
+import { ensureSchema, initDatabase } from './_seed.js'
 import type { Course, User } from '../src/types'
 
 // Mock-модули служат источником статического контента (только import type внутри —
@@ -135,6 +136,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ---------- PROFILE ----------
     if (path === 'admin/profile' && method === 'PATCH') {
       return await updateProfile(req, res)
+    }
+
+    // ---------- DATABASE (управление БД из админки) ----------
+    if (path === 'admin/db' && method === 'GET') {
+      return await dbStatus(res)
+    }
+    if (path === 'admin/db/init' && method === 'POST') {
+      const sql = getSql()
+      const counts = await initDatabase(sql)
+      return res.json({ ok: true, counts })
+    }
+    if (path === 'admin/db/reset-courses' && method === 'POST') {
+      return await resetCourses(res)
+    }
+    if (path === 'admin/db/users' && method === 'POST') {
+      return await createDbUser(req, res)
+    }
+    if (segments[0] === 'admin' && segments[1] === 'db' && segments[2] === 'users' && segments.length === 4) {
+      const id = segments[3]
+      if (method === 'PUT') return await updateDbUser(id, req, res)
+      if (method === 'DELETE') return await deleteDbUser(id, res)
     }
 
     // ---------- ADMIN (mock) ----------
@@ -279,6 +301,81 @@ async function updateProfile(req: VercelRequest, res: VercelResponse) {
   if (!rows[0]) return res.status(404).json({ message: 'Пользователь не найден' })
   const u = rows[0]
   return res.json({ id: u.id, name: u.name, email: u.email, role: u.role, kind: u.kind })
+}
+
+async function dbStatus(res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const [{ count: coursesCount }] = await sql`SELECT COUNT(*)::int AS count FROM courses`
+  const [{ count: usersCount }] = await sql`SELECT COUNT(*)::int AS count FROM users`
+  const users = await sql`
+    SELECT id, name, email, role, kind, created_at
+    FROM users ORDER BY created_at ASC
+  `
+  return res.json({
+    tables: [
+      { name: 'courses', label: 'Программы', rows: Number(coursesCount) },
+      { name: 'users', label: 'Аккаунты', rows: Number(usersCount) },
+    ],
+    users: users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      kind: u.kind,
+      createdAt: u.created_at,
+    })),
+  })
+}
+
+async function createDbUser(req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const body = parseBody(req)
+  const name = String(body.name ?? '').trim()
+  const email = String(body.email ?? '').trim().toLowerCase()
+  const role = String(body.role ?? '').trim()
+  const kind = body.kind === 'admin' ? 'admin' : 'student'
+  const password = String(body.password ?? '')
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: 'Укажите имя, e-mail и пароль.' })
+  }
+  const exists = await sql`SELECT id FROM users WHERE email = ${email} LIMIT 1`
+  if (exists[0]) return res.status(409).json({ message: 'Пользователь с таким e-mail уже существует.' })
+  const id = `u-${Date.now().toString(36)}`
+  const hash = await bcrypt.hash(password, 10)
+  const finalRole = role || (kind === 'admin' ? 'Администратор платформы' : 'Слушатель академии')
+  await sql`
+    INSERT INTO users (id, name, email, role, kind, password_hash)
+    VALUES (${id}, ${name}, ${email}, ${finalRole}, ${kind}, ${hash})
+  `
+  return res.status(201).json({ id, name, email, role: finalRole, kind })
+}
+
+async function updateDbUser(id: string, req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  const rows = await sql`SELECT id, name, email, role, kind FROM users WHERE id = ${id} LIMIT 1`
+  if (!rows[0]) return res.status(404).json({ message: 'Пользователь не найден' })
+  const cur = rows[0]
+  const body = parseBody(req)
+  const name = body.name !== undefined ? String(body.name).trim() : (cur.name as string)
+  const role = body.role !== undefined ? String(body.role).trim() : (cur.role as string)
+  const kind = body.kind === 'admin' ? 'admin' : body.kind === 'student' ? 'student' : (cur.kind as string)
+  const password = body.password !== undefined ? String(body.password) : ''
+
+  if (password) {
+    const hash = await bcrypt.hash(password, 10)
+    await sql`UPDATE users SET name = ${name}, role = ${role}, kind = ${kind}, password_hash = ${hash} WHERE id = ${id}`
+  } else {
+    await sql`UPDATE users SET name = ${name}, role = ${role}, kind = ${kind} WHERE id = ${id}`
+  }
+  return res.json({ id, name, email: cur.email, role, kind })
+}
+
+async function deleteDbUser(id: string, res: VercelResponse) {
+  const sql = getSql()
+  await sql`DELETE FROM users WHERE id = ${id}`
+  return res.status(204).end()
 }
 
 function slugify(value: string): string {
