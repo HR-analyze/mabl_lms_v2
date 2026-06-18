@@ -127,7 +127,7 @@ export default function CourseDetailPage() {
       {/* Шапка курса */}
       <section className="relative overflow-hidden border-b border-ink-10 bg-neft text-wisdom">
         <div className="brand-pattern absolute inset-0 opacity-[0.05]" />
-        <Container className="py-16 md:py-20">
+        <Container className="relative py-16 md:py-20">
           <Link to="/courses" className="text-sm text-wisdom/50 hover:text-wisdom">← Каталог</Link>
           <div className="mt-6 grid gap-10 lg:grid-cols-[1.4fr_0.6fr] lg:items-end">
             <div>
