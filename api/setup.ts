@@ -71,7 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       {
         id: 'u-adm',
-        name: 'Елена Северова',
+        name: 'Администратор',
         email: 'admin@mabl.ru',
         role: 'Администратор платформы',
         kind: 'admin',

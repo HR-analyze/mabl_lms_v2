@@ -61,6 +61,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (path === 'auth/login' && method === 'POST') {
       return await login(req, res)
     }
+    if (path === 'auth/migrate' && method === 'POST') {
+      const sql = getSql()
+      await sql`UPDATE users SET name = 'Администратор' WHERE id = 'u-adm' AND name = 'Елена Северова'`
+      return res.json({ ok: true })
+    }
     if (path === 'auth/recover' && method === 'POST') {
       const { email } = parseBody(req)
       if (!email || !String(email).includes('@')) {
@@ -126,6 +131,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ---------- NOTIFICATIONS (mock) ----------
     if (path === 'notifications' && method === 'GET') return res.json(notifications)
+
+    // ---------- PROFILE ----------
+    if (path === 'admin/profile' && method === 'PATCH') {
+      return await updateProfile(req, res)
+    }
 
     // ---------- ADMIN (mock) ----------
     if (path === 'admin/orders' && method === 'GET') return res.json(orders)
@@ -259,6 +269,16 @@ async function resetCourses(res: VercelResponse) {
     `
   }
   return res.json(seedCourses)
+}
+
+async function updateProfile(req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  const { id, name } = parseBody(req)
+  if (!id || !name) return res.status(400).json({ message: 'id и name обязательны' })
+  const rows = await sql`UPDATE users SET name = ${String(name)} WHERE id = ${String(id)} RETURNING id, name, email, role, kind`
+  if (!rows[0]) return res.status(404).json({ message: 'Пользователь не найден' })
+  const u = rows[0]
+  return res.json({ id: u.id, name: u.name, email: u.email, role: u.role, kind: u.kind })
 }
 
 function slugify(value: string): string {
