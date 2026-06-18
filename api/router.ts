@@ -18,19 +18,14 @@ import { adminUsers } from '../src/data/users.js'
 /**
  * Единый роутер всех /api/* эндпоинтов.
  *
- * Vercel Hobby ограничивает число serverless-функций, поэтому весь API собран
- * в одну catch-all функцию. Явные файлы (например, api/setup.ts) имеют приоритет
- * над этим маршрутом.
+ * Все /api/* запросы попадают сюда через rewrite в vercel.json
+ * (`/api/(.*) → /api/router?path=$1`) — детерминированно для всех HTTP-методов.
+ * Файл api/setup.ts имеет приоритет (прямое попадание по файловой системе).
  *
  * Каталог курсов и аутентификация — из БД Neon; остальные ресурсы (события,
  * новости, материалы, форум, опросники, заказы, участники) пока отдаются из
  * mock-модулей, единых с фронтендом.
  */
-/** Vercel: включить парсинг тела запроса (нужно явно в ESM). */
-export const config = {
-  api: { bodyParser: { sizeLimit: '1mb' } },
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS — нужен для POST/PUT/DELETE из браузера.
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -38,16 +33,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') return res.status(204).end()
 
-  // Сегменты пути берём из req.url; если Vercel уже срезал /api/ — не страшно.
-  const rawUrl = req.url || ''
-  const pathname = rawUrl.split('?')[0]
-  let segments = pathname.replace(/^\/+/, '').split('/').filter(Boolean)
-  if (segments[0] === 'api') segments = segments.slice(1)
+  // Путь приходит в query-параметре path (из rewrite). Fallback — из req.url.
+  const rawPath = req.query.path
+  let segments =
+    (typeof rawPath === 'string'
+      ? rawPath
+      : Array.isArray(rawPath)
+        ? rawPath.join('/')
+        : ''
+    )
+      .split('/')
+      .filter(Boolean)
 
-  // Fallback на параметр маршрута, если по какой-то причине url пуст.
-  if (segments.length === 0 && req.query.path) {
-    const raw = req.query.path
-    segments = (Array.isArray(raw) ? raw : [raw]).filter(Boolean) as string[]
+  if (segments.length === 0) {
+    const pathname = (req.url || '').split('?')[0]
+    segments = pathname.replace(/^\/+/, '').split('/').filter(Boolean)
+    if (segments[0] === 'api') segments = segments.slice(1)
+    if (segments[0] === 'router') segments = segments.slice(1)
   }
 
   const method = (req.method || 'GET').toUpperCase()
