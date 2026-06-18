@@ -8,6 +8,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Crest } from '@/components/brand/Crest'
 import { Book, Check, Clipboard, Lock, Play } from '@/components/ui/Icon'
 import { ScormPlayer } from '@/components/ScormPlayer'
+import type { ScormStatus } from '@/components/ScormPlayer'
 import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
 import { formatPrice, cn } from '@/lib/utils'
@@ -15,7 +16,13 @@ import { courseFormatLabel } from '@/lib/labels'
 import type { Lesson } from '@/types'
 
 /** Плейсхолдер плеера в зависимости от формата урока. */
-function LessonPlayer({ lesson }: { lesson: Lesson }) {
+function LessonPlayer({
+  lesson,
+  onScormStatus,
+}: {
+  lesson: Lesson
+  onScormStatus?: (s: ScormStatus) => void
+}) {
   if (lesson.format === 'video') {
     return (
       <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-card bg-neft text-wisdom">
@@ -37,6 +44,7 @@ function LessonPlayer({ lesson }: { lesson: Lesson }) {
           src={lesson.launchUrl}
           title={lesson.title}
           storageKey={`mabl.scorm.${lesson.id}`}
+          onStatus={onScormStatus}
         />
       )
     }
@@ -73,7 +81,7 @@ function LessonPlayer({ lesson }: { lesson: Lesson }) {
 
 export default function CourseDetailPage() {
   const { id = '' } = useParams()
-  const { getCourseById } = useCourses()
+  const { getCourseById, updateCourse } = useCourses()
   const course = getCourseById(id)
   const { isOwned } = usePurchases()
   // Бесплатные программы (цена 0) открыты без покупки — например, демо-SCORM-тренинг.
@@ -81,6 +89,23 @@ export default function CourseDetailPage() {
 
   const firstLesson = course?.modules[0]?.lessons[0]
   const [activeLesson, setActiveLesson] = useState<Lesson | undefined>(firstLesson)
+
+  // Прогресс из SCORM: обновляем прогресс курса и отмечаем урок пройденным.
+  const handleScormStatus = (s: ScormStatus) => {
+    if (!course || !activeLesson) return
+    const current = course.progress ?? 0
+    const next = Math.max(current, s.progress)
+    const courseLesson = course.modules.flatMap((m) => m.lessons).find((l) => l.id === activeLesson.id)
+    const needComplete = s.completed && !courseLesson?.completed
+    if (next <= current && !needComplete) return
+    const modules = s.completed
+      ? course.modules.map((m) => ({
+          ...m,
+          lessons: m.lessons.map((l) => (l.id === activeLesson.id ? { ...l, completed: true } : l)),
+        }))
+      : course.modules
+    void updateCourse(course.id, { progress: next, modules })
+  }
 
   if (!course) {
     return (
@@ -141,7 +166,7 @@ export default function CourseDetailPage() {
               </h2>
               {activeLesson ? (
                 owned ? (
-                  <LessonPlayer lesson={activeLesson} />
+                  <LessonPlayer lesson={activeLesson} onScormStatus={handleScormStatus} />
                 ) : (
                   <div className="flex aspect-video flex-col items-center justify-center rounded-card border border-dashed border-ink-20 bg-ink-5 text-center">
                     <Lock width={30} height={30} className="text-ink-40" />

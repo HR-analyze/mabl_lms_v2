@@ -27,6 +27,7 @@ import { AdminLayout } from './components/layout/AdminLayout'
 import AdminOverviewPage from './pages/admin/AdminOverviewPage'
 import AdminCoursesPage from './pages/admin/AdminCoursesPage'
 import AdminCourseEditPage from './pages/admin/AdminCourseEditPage'
+import AdminScormPage from './pages/admin/AdminScormPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminOrdersPage from './pages/admin/AdminOrdersPage'
 import AdminEventsPage from './pages/admin/AdminEventsPage'
@@ -72,6 +73,7 @@ export default function App() {
           <Route path="/admin/courses" element={<AdminCoursesPage />} />
           <Route path="/admin/courses/new" element={<AdminCourseEditPage />} />
           <Route path="/admin/courses/:id" element={<AdminCourseEditPage />} />
+          <Route path="/admin/scorm" element={<AdminScormPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
           <Route path="/admin/events" element={<AdminEventsPage />} />

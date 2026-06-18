@@ -4,12 +4,23 @@ import { ArrowUpRight } from './ui/Icon'
 /**
  * Плеер SCORM-пакетов (SCORM 1.2). Контент запускается в iframe, а на родительском
  * окне поднимается минимальный SCORM-runtime (`window.API`), который пакет находит
- * через `lms.js`. Прогресс/статус сохраняются в localStorage (демо-режим).
+ * через `lms.js`. Прогресс/статус сохраняются в localStorage (демо-режим) и
+ * пробрасываются наверх через onStatus — чтобы обновлять прогресс курса.
  *
  * В продакшене этот runtime заменяется на серверный трекинг (отправка cmi.* в API).
  */
 
 type CmiData = Record<string, string>
+
+export interface ScormStatus {
+  /** cmi.core.lesson_status (completed/passed/incomplete/…). */
+  status: string
+  /** cmi.core.score.raw, если задан. */
+  score?: number
+  /** Прогресс прохождения, 0–100. */
+  progress: number
+  completed: boolean
+}
 
 interface Scorm12Api {
   LMSInitialize: () => string
@@ -28,7 +39,20 @@ declare global {
   }
 }
 
-function createApi(storageKey: string, studentName: string): Scorm12Api {
+function computeStatus(data: CmiData): ScormStatus {
+  const status = data['cmi.core.lesson_status'] || 'not attempted'
+  const raw = parseFloat(data['cmi.core.score.raw'] ?? '')
+  const hasScore = Number.isFinite(raw)
+  const completed = status === 'completed' || status === 'passed'
+  const progress = completed ? 100 : hasScore ? Math.min(100, Math.max(0, Math.round(raw))) : 0
+  return { status, score: hasScore ? raw : undefined, progress, completed }
+}
+
+function createApi(
+  storageKey: string,
+  studentName: string,
+  emit: (s: ScormStatus) => void,
+): Scorm12Api {
   const defaults: CmiData = {
     'cmi.core.student_id': 'u-001',
     'cmi.core.student_name': studentName,
@@ -55,6 +79,7 @@ function createApi(storageKey: string, studentName: string): Scorm12Api {
     } catch {
       /* приватный режим / переполнение — не критично */
     }
+    emit(computeStatus(data))
     return 'true'
   }
 
@@ -64,6 +89,9 @@ function createApi(storageKey: string, studentName: string): Scorm12Api {
     LMSGetValue: (key) => data[key] ?? '',
     LMSSetValue: (key, value) => {
       data[key] = value
+      if (key === 'cmi.core.lesson_status' || key === 'cmi.core.score.raw') {
+        emit(computeStatus(data))
+      }
       return 'true'
     },
     LMSCommit: persist,
@@ -81,15 +109,23 @@ interface ScormPlayerProps {
   studentName?: string
   /** Ключ для сохранения прогресса. */
   storageKey: string
+  /** Колбэк при изменении статуса/прогресса SCORM. */
+  onStatus?: (status: ScormStatus) => void
 }
 
-export function ScormPlayer({ src, title, studentName = 'Слушатель МАБЛ', storageKey }: ScormPlayerProps) {
+export function ScormPlayer({
+  src,
+  title,
+  studentName = 'Слушатель МАБЛ',
+  storageKey,
+  onStatus,
+}: ScormPlayerProps) {
   const [ready, setReady] = useState(false)
-  const apiRef = useRef<Scorm12Api | null>(null)
+  const onStatusRef = useRef(onStatus)
+  onStatusRef.current = onStatus
 
   useEffect(() => {
-    const api = createApi(storageKey, studentName)
-    apiRef.current = api
+    const api = createApi(storageKey, studentName, (s) => onStatusRef.current?.(s))
     window.API = api
     setReady(true)
     return () => {

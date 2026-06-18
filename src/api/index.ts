@@ -8,6 +8,7 @@ import { materialsApi } from './materials'
 import { surveysApi } from './surveys'
 import { forumApi } from './forum'
 import { notificationsApi } from './notifications'
+import { scormApi } from './scorm'
 
 /**
  * Единая точка доступа к данным приложения.
@@ -27,7 +28,9 @@ export const api = {
   surveys: surveysApi,
   forum: forumApi,
   notifications: notificationsApi,
+  scorm: scormApi,
 }
 
 export { USE_MOCK, API_URL, ApiError } from './config'
 export type { DemoAccount } from './auth'
+export type { ScormPackage } from './scorm'

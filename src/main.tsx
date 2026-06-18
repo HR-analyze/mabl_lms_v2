@@ -8,6 +8,15 @@ import { CoursesProvider } from './context/CoursesContext'
 import { PurchaseProvider } from './context/PurchaseContext'
 import { NotificationsProvider } from './context/NotificationsContext'
 
+// Service Worker для проигрывания загруженных через админку SCORM-пакетов.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/scorm-sw.js').catch(() => {
+      /* без воркера загруженные SCORM просто не проигрываются — не критично */
+    })
+  })
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>

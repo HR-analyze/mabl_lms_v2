@@ -5,6 +5,7 @@ import { Button } from '../ui/Button'
 import {
   ArrowUpRight,
   Calendar,
+  Clipboard,
   Close,
   Document,
   Grid,
@@ -19,6 +20,7 @@ import { cn } from '@/lib/utils'
 const adminNav = [
   { to: '/admin', label: 'Обзор', icon: Home, end: true },
   { to: '/admin/courses', label: 'Программы', icon: Grid, end: false },
+  { to: '/admin/scorm', label: 'SCORM-пакеты', icon: Clipboard, end: false },
   { to: '/admin/users', label: 'Участники', icon: User, end: false },
   { to: '/admin/orders', label: 'Заказы', icon: Document, end: false },
   { to: '/admin/events', label: 'События', icon: Calendar, end: false },
