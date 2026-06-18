@@ -135,7 +135,7 @@ export default function CheckoutPage() {
               {processing ? 'Проводим оплату…' : `Оплатить ${formatPrice(course.price)}`}
             </Button>
             <p className="text-center text-[0.72rem] text-ink-40">
-              Нажимая «Оплатить», вы соглашаетесь с <Link to="/offer" className="underline hover:text-ink-80">публичной офертой</Link> и <Link to="/privacy" className="underline hover:text-ink-80">политикой конфиденциальности</Link> МАБЛ.
+              Нажимая «Оплатить», вы принимаете <Link to="/offer" className="underline hover:text-ink-80">публичную оферту</Link>, <Link to="/privacy" className="underline hover:text-ink-80">политику конфиденциальности</Link> и даёте <Link to="/consent-personal-data" className="underline hover:text-ink-80">согласие на обработку персональных данных</Link> МАБЛ.
             </p>
           </form>
         </div>

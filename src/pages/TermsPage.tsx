@@ -54,6 +54,15 @@ export default function TermsPage() {
           <p>7.2. Актуальная редакция Правил размещается на Платформе по адресу https://course.mabl.ru/ и вступает в силу с момента публикации.</p>
           <p>7.3. По всем вопросам, связанным с использованием Платформы, Пользователь может обратиться по адресу электронной почты: <a href="mailto:biznes-liderstva@yandex.ru" className="text-ocean hover:underline">biznes-liderstva@yandex.ru</a></p>
         </Section>
+
+        <a
+          href="/docs/pravila-polzovaniya.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-token border border-ink-20 px-5 py-2.5 text-[0.72rem] font-semibold uppercase tracking-wide text-neft transition-colors hover:border-neft hover:bg-ink-5"
+        >
+          Скачать в PDF
+        </a>
       </div>
     </div>
   )

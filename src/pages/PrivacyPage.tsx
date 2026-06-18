@@ -114,6 +114,15 @@ export default function PrivacyPage() {
           Телефон: <a href="tel:+79851830808" className="text-ocean hover:underline">+7 (985) 183-08-08</a><br />
           Адрес: 109316, г. Москва, вн.тер.г. муниципальный округ Южнопортовый, пр-кт Волгоградский, д. 26, стр. 1</p>
         </Section>
+
+        <a
+          href="/docs/politika-konfidencialnosti.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-token border border-ink-20 px-5 py-2.5 text-[0.72rem] font-semibold uppercase tracking-wide text-neft transition-colors hover:border-neft hover:bg-ink-5"
+        >
+          Скачать в PDF
+        </a>
       </div>
     </div>
   )
