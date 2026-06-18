@@ -32,6 +32,9 @@ import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminOrdersPage from './pages/admin/AdminOrdersPage'
 import AdminEventsPage from './pages/admin/AdminEventsPage'
 import AdminDatabasePage from './pages/admin/AdminDatabasePage'
+import OfferPage from './pages/OfferPage'
+import PrivacyPage from './pages/PrivacyPage'
+import TermsPage from './pages/TermsPage'
 
 export default function App() {
   return (
@@ -57,6 +60,9 @@ export default function App() {
           <Route path="/materials/:id" element={<MaterialDetailPage />} />
           <Route path="/surveys" element={<SurveysPage />} />
           <Route path="/surveys/:id" element={<SurveyDetailPage />} />
+          <Route path="/offer" element={<OfferPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
         </Route>
 
         {/* Аутентификация (без общего каркаса) */}
