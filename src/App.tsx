@@ -7,6 +7,7 @@ import { AppLayout } from './components/layout/AppLayout'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
 import CheckoutPage from './pages/CheckoutPage'
+import PaymentReturnPage from './pages/PaymentReturnPage'
 import CoursesPage from './pages/CoursesPage'
 import CourseDetailPage from './pages/CourseDetailPage'
 import NewsPage from './pages/NewsPage'
@@ -41,6 +42,7 @@ export default function App() {
         <Route element={<PublicLayout />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
+          <Route path="/payment/return" element={<PaymentReturnPage />} />
         </Route>
 
         {/* Общие разделы: гостю — публичный каркас, слушателю — каркас кабинета */}
