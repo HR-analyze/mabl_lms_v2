@@ -90,6 +90,15 @@ export default function OfferPage() {
         <Section title="12. Реквизиты исполнителя">
           <Requisites />
         </Section>
+
+        <a
+          href="/docs/publichnaya-oferta.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-token border border-ink-20 px-5 py-2.5 text-[0.72rem] font-semibold uppercase tracking-wide text-neft transition-colors hover:border-neft hover:bg-ink-5"
+        >
+          Скачать в PDF
+        </a>
       </div>
     </div>
   )

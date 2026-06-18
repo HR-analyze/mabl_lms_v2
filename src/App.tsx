@@ -35,6 +35,10 @@ import AdminDatabasePage from './pages/admin/AdminDatabasePage'
 import OfferPage from './pages/OfferPage'
 import PrivacyPage from './pages/PrivacyPage'
 import TermsPage from './pages/TermsPage'
+import RequisitesPage from './pages/RequisitesPage'
+import ConsentPersonalDataPage from './pages/ConsentPersonalDataPage'
+import ConsentMarketingPage from './pages/ConsentMarketingPage'
+import DocumentsPage from './pages/DocumentsPage'
 
 export default function App() {
   return (
@@ -60,9 +64,13 @@ export default function App() {
           <Route path="/materials/:id" element={<MaterialDetailPage />} />
           <Route path="/surveys" element={<SurveysPage />} />
           <Route path="/surveys/:id" element={<SurveyDetailPage />} />
+          <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/requisites" element={<RequisitesPage />} />
           <Route path="/offer" element={<OfferPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
+          <Route path="/consent-personal-data" element={<ConsentPersonalDataPage />} />
+          <Route path="/consent-marketing" element={<ConsentMarketingPage />} />
         </Route>
 
         {/* Аутентификация (без общего каркаса) */}

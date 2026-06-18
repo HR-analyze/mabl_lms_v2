@@ -28,11 +28,21 @@ const columns = [
   {
     title: 'Документы',
     links: [
+      { to: '/documents', label: 'Все документы' },
+      { to: '/requisites', label: 'Реквизиты' },
       { to: '/offer', label: 'Публичная оферта' },
-      { to: '/privacy', label: 'Политика конфиденциальности' },
-      { to: '/terms', label: 'Правила платформы' },
     ],
   },
+]
+
+/** Ссылки правового блока (мелким шрифтом внизу футера). */
+const legalLinks = [
+  { to: '/requisites', label: 'Реквизиты' },
+  { to: '/offer', label: 'Публичная оферта' },
+  { to: '/privacy', label: 'Политика конфиденциальности' },
+  { to: '/terms', label: 'Правила платформы' },
+  { to: '/consent-personal-data', label: 'Согласие на обработку ПДн' },
+  { to: '/consent-marketing', label: 'Согласие на рассылки' },
 ]
 
 export function Footer() {
@@ -76,9 +86,19 @@ export function Footer() {
           ))}
         </div>
 
-        <div className="mt-14 flex flex-col gap-3 border-t border-wisdom/10 pt-6 text-[0.72rem] text-wisdom/40 md:flex-row md:items-center md:justify-between">
-          <p>© {new Date().getFullYear()} МАБЛ · ООО «Международная Академия Бизнес Лидерства» · ИНН&nbsp;9722114606</p>
-          <p className="uppercase tracking-wide">Sapere · Ducere</p>
+        {/* Правовой блок — мелким шрифтом */}
+        <div className="mt-14 border-t border-wisdom/10 pt-6">
+          <nav className="flex flex-wrap gap-x-4 gap-y-2 text-[0.66rem] text-wisdom/35">
+            {legalLinks.map((l) => (
+              <Link key={l.to} to={l.to} className="transition-colors hover:text-wisdom/70">
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="mt-4 flex flex-col gap-2 text-[0.66rem] text-wisdom/35 md:flex-row md:items-center md:justify-between">
+            <p>© {new Date().getFullYear()} ООО «Международная Академия Бизнес Лидерства» · ОГРН&nbsp;1267700127001 · ИНН&nbsp;9722114606</p>
+            <p className="uppercase tracking-wide">Sapere · Ducere</p>
+          </div>
         </div>
       </div>
     </footer>
