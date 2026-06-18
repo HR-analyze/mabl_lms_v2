@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import bcrypt from 'bcryptjs'
-import { getSql } from './_db'
-import { courses as seedCourses } from '../src/data/courses'
+import { getSql } from './_db.js'
+import { courses as seedCourses } from '../src/data/courses.js'
 
 /**
  * Одноразовая инициализация базы данных Neon.

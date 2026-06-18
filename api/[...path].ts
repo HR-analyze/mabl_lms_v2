@@ -1,19 +1,19 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import bcrypt from 'bcryptjs'
-import { getSql } from './_db'
+import { getSql } from './_db.js'
 import type { Course, User } from '../src/types'
 
 // Mock-модули служат источником статического контента (только import type внутри —
-// при сборке зависимостей от @/ не остаётся).
-import { courses as seedCourses } from '../src/data/courses'
-import { events, getNextWebinar } from '../src/data/events'
-import { news } from '../src/data/news'
-import { materials } from '../src/data/materials'
-import { surveys } from '../src/data/surveys'
-import { forumSections, forumTopics } from '../src/data/forum'
-import { notifications } from '../src/data/notifications'
-import { orders } from '../src/data/orders'
-import { adminUsers } from '../src/data/users'
+// при сборке зависимостей от @/ не остаётся). Расширения .js обязательны для ESM.
+import { courses as seedCourses } from '../src/data/courses.js'
+import { events, getNextWebinar } from '../src/data/events.js'
+import { news } from '../src/data/news.js'
+import { materials } from '../src/data/materials.js'
+import { surveys } from '../src/data/surveys.js'
+import { forumSections, forumTopics } from '../src/data/forum.js'
+import { notifications } from '../src/data/notifications.js'
+import { orders } from '../src/data/orders.js'
+import { adminUsers } from '../src/data/users.js'
 
 /**
  * Единый роутер всех /api/* эндпоинтов.
