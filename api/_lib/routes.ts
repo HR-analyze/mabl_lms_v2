@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { sql } from './db'
 import { HttpError, getAuth, readBody, requireAdmin, requireAuth } from './http'
 import { hashPassword, signToken, verifyPassword } from './auth'
+import { runSetup } from './setup'
 import { courses as seedCourses } from '../../src/data/courses'
 import type { Course } from '../../src/types'
 
@@ -75,6 +76,16 @@ export async function route(
   res: VercelResponse,
 ): Promise<void> {
   const [resource, a, b, c] = segs
+
+  // --- Разовая настройка БД (схема + демо-данные) ---
+  if (resource === 'setup' && method === 'POST') {
+    const expected = process.env.SETUP_SECRET
+    if (!expected) throw new HttpError(403, 'Настройка отключена: задайте переменную SETUP_SECRET.')
+    const secret = new URL(req.url ?? '', 'http://localhost').searchParams.get('secret')
+    if (secret !== expected) throw new HttpError(403, 'Неверный ключ настройки.')
+    const counts = await runSetup()
+    return send(res, { ok: true, counts })
+  }
 
   // --- Авторизация ---
   if (resource === 'auth') {

@@ -32,13 +32,23 @@ db/
    `JWT_SECRET` = длинная случайная строка.
 3. **Переключить фронт на бэкенд**: добавить переменные
    `VITE_API_MODE=http` и `VITE_API_URL=/api`.
-4. **Применить схему и сид** (локально, с `POSTGRES_URL` из Vercel):
+4. **Создать таблицы и залить данные** — двумя способами:
+
+   **A. Через браузер (без локального Node)** — задать временную переменную
+   `SETUP_SECRET` (любая случайная строка), сделать **Redeploy**, затем один раз
+   вызвать эндпоинт настройки:
    ```bash
-   export POSTGRES_URL='postgres://...'   # из Vercel Storage
-   npm run db:migrate
-   npm run db:seed
+   curl -X POST "https://<домен>/api/setup?secret=<SETUP_SECRET>"
    ```
-5. **Redeploy** проекта. Готово — приложение работает на реальной БД.
+   Ответ — счётчики вставленных записей. После этого переменную `SETUP_SECRET`
+   можно удалить.
+
+   **B. Локально через CLI** (с `POSTGRES_URL` из Vercel):
+   ```bash
+   export POSTGRES_URL='postgres://...'
+   npm run db:seed     # схема + демо-данные одной командой
+   ```
+5. **Redeploy** проекта (если меняли переменные). Готово — приложение на реальной БД.
 
 Демо-вход после сида: `demo@mabl.ru / mabl2026`, `admin@mabl.ru / admin2026`.
 

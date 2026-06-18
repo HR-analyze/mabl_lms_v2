@@ -1,7 +1,9 @@
--- Схема БД МАБЛ (Postgres). Имена колонок в camelCase (в кавычках),
--- чтобы ответы API сразу соответствовали типам фронтенда.
--- Вложенные структуры (модули, вопросы, комментарии) — в JSONB.
-
+/**
+ * Схема БД как TS-константа — чтобы её видела serverless-функция /api/setup
+ * (доступ к файлам в рантайме функции ограничен). Источник истины по схеме.
+ * Имена колонок в camelCase (в кавычках) совпадают с типами фронтенда.
+ */
+export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS courses (
   id text PRIMARY KEY,
   title text NOT NULL,
@@ -122,7 +124,6 @@ CREATE TABLE IF NOT EXISTS scorm_packages (
   "uploadedAt" timestamptz
 );
 
--- Доступ слушателя к программам и записи на события.
 CREATE TABLE IF NOT EXISTS enrollments (
   "userId" text,
   "courseId" text,
@@ -136,3 +137,4 @@ CREATE TABLE IF NOT EXISTS event_registrations (
   "createdAt" timestamptz DEFAULT now(),
   PRIMARY KEY ("userId", "eventId")
 );
+`
