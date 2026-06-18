@@ -27,8 +27,19 @@ import { adminUsers } from '../src/data/users.js'
  * mock-модулей, единых с фронтендом.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const raw = req.query.path
-  const segments = (Array.isArray(raw) ? raw : [raw]).filter(Boolean) as string[]
+  // Сегменты пути берём из req.url (надёжнее, чем req.query.path: не зависит
+  // от того, как Vercel разбирает динамический маршрут [...path]).
+  const rawUrl = req.url || ''
+  const pathname = rawUrl.split('?')[0]
+  let segments = pathname.replace(/^\/+/, '').split('/').filter(Boolean)
+  if (segments[0] === 'api') segments = segments.slice(1)
+
+  // Fallback на параметр маршрута, если по какой-то причине url пуст.
+  if (segments.length === 0 && req.query.path) {
+    const raw = req.query.path
+    segments = (Array.isArray(raw) ? raw : [raw]).filter(Boolean) as string[]
+  }
+
   const method = (req.method || 'GET').toUpperCase()
   const path = segments.join('/')
 
