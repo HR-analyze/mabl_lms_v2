@@ -2,10 +2,15 @@ import { Link } from 'react-router-dom'
 import { Container, SectionHeading } from '@/components/ui/Section'
 import { Badge } from '@/components/ui/Badge'
 import { ArrowUpRight, Chat } from '@/components/ui/Icon'
-import { forumSections, forumTopics } from '@/data/forum'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { formatDate } from '@/lib/utils'
 
 export default function ForumPage() {
+  const { data: sectionsData } = useAsync(() => api.forum.listSections(), [])
+  const { data: topicsData } = useAsync(() => api.forum.listTopics(), [])
+  const forumSections = sectionsData ?? []
+  const forumTopics = topicsData ?? []
   return (
     <div className="py-14 md:py-20">
       <Container>

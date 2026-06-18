@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Input'
 import { Check } from '@/components/ui/Icon'
 import { Crest } from '@/components/brand/Crest'
-import { getSurveyById } from '@/data/surveys'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
 import { cn } from '@/lib/utils'
 import type { SurveyQuestion } from '@/types'
 
@@ -14,11 +15,15 @@ type AnswerValue = string | string[] | number
 
 export default function SurveyDetailPage() {
   const { id = '' } = useParams()
-  const survey = getSurveyById(id)
+  const { data: survey, loading } = useAsync(() => api.surveys.get(id), [id])
 
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({})
   const [errors, setErrors] = useState<Record<string, boolean>>({})
   const [submitted, setSubmitted] = useState(false)
+
+  if (loading) {
+    return <Container className="py-24 text-center text-ink-60">Загрузка…</Container>
+  }
 
   if (!survey) {
     return (
@@ -114,9 +119,9 @@ export default function SurveyDetailPage() {
             />
           ))}
 
-          <div className="flex items-center justify-between border-t border-ink-10 pt-6">
+          <div className="flex flex-col-reverse items-stretch gap-4 border-t border-ink-10 pt-6 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[0.72rem] text-ink-40">Поля со знаком · обязательны</p>
-            <Button type="submit" size="lg">Отправить ответы</Button>
+            <Button type="submit" size="lg" className="w-full sm:w-auto">Отправить ответы</Button>
           </div>
         </form>
       </Container>
@@ -229,7 +234,7 @@ function QuestionBlock({
 
         {/* scale 1–5 */}
         {question.type === 'scale' && (
-          <div className="flex gap-3">
+          <div className="flex gap-2 sm:gap-3">
             {[1, 2, 3, 4, 5].map((n) => {
               const selected = value === n
               return (
@@ -238,7 +243,7 @@ function QuestionBlock({
                   type="button"
                   onClick={() => onScale(n)}
                   className={cn(
-                    'flex h-12 w-12 items-center justify-center rounded-card border font-serif text-lg transition-colors',
+                    'flex h-12 flex-1 items-center justify-center rounded-card border font-serif text-lg transition-colors sm:w-12 sm:flex-none',
                     selected ? 'border-ocean bg-ocean text-wisdom' : 'border-ink-20 text-neft hover:border-neft',
                   )}
                 >

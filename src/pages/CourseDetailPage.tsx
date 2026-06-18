@@ -7,14 +7,22 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Crest } from '@/components/brand/Crest'
 import { Book, Check, Clipboard, Lock, Play } from '@/components/ui/Icon'
-import { getCourseById } from '@/data/courses'
+import { ScormPlayer } from '@/components/ScormPlayer'
+import type { ScormStatus } from '@/components/ScormPlayer'
+import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
 import { formatPrice, cn } from '@/lib/utils'
 import { courseFormatLabel } from '@/lib/labels'
 import type { Lesson } from '@/types'
 
 /** Плейсхолдер плеера в зависимости от формата урока. */
-function LessonPlayer({ lesson }: { lesson: Lesson }) {
+function LessonPlayer({
+  lesson,
+  onScormStatus,
+}: {
+  lesson: Lesson
+  onScormStatus?: (s: ScormStatus) => void
+}) {
   if (lesson.format === 'video') {
     return (
       <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-card bg-neft text-wisdom">
@@ -30,6 +38,16 @@ function LessonPlayer({ lesson }: { lesson: Lesson }) {
     )
   }
   if (lesson.format === 'scorm') {
+    if (lesson.launchUrl) {
+      return (
+        <ScormPlayer
+          src={lesson.launchUrl}
+          title={lesson.title}
+          storageKey={`mabl.scorm.${lesson.id}`}
+          onStatus={onScormStatus}
+        />
+      )
+    }
     return (
       <div className="flex aspect-video flex-col items-center justify-center rounded-card border border-dashed border-ink-20 bg-ink-5 text-center">
         <span className="flex h-16 w-16 items-center justify-center rounded-card border border-ink-20 text-ocean">
@@ -63,12 +81,31 @@ function LessonPlayer({ lesson }: { lesson: Lesson }) {
 
 export default function CourseDetailPage() {
   const { id = '' } = useParams()
+  const { getCourseById, updateCourse } = useCourses()
   const course = getCourseById(id)
   const { isOwned } = usePurchases()
-  const owned = course ? isOwned(course.id) : false
+  // Бесплатные программы (цена 0) открыты без покупки — например, демо-SCORM-тренинг.
+  const owned = course ? course.price === 0 || isOwned(course.id) : false
 
   const firstLesson = course?.modules[0]?.lessons[0]
   const [activeLesson, setActiveLesson] = useState<Lesson | undefined>(firstLesson)
+
+  // Прогресс из SCORM: обновляем прогресс курса и отмечаем урок пройденным.
+  const handleScormStatus = (s: ScormStatus) => {
+    if (!course || !activeLesson) return
+    const current = course.progress ?? 0
+    const next = Math.max(current, s.progress)
+    const courseLesson = course.modules.flatMap((m) => m.lessons).find((l) => l.id === activeLesson.id)
+    const needComplete = s.completed && !courseLesson?.completed
+    if (next <= current && !needComplete) return
+    const modules = s.completed
+      ? course.modules.map((m) => ({
+          ...m,
+          lessons: m.lessons.map((l) => (l.id === activeLesson.id ? { ...l, completed: true } : l)),
+        }))
+      : course.modules
+    void updateCourse(course.id, { progress: next, modules })
+  }
 
   if (!course) {
     return (
@@ -78,6 +115,12 @@ export default function CourseDetailPage() {
       </Container>
     )
   }
+
+  // Актуальный статус активного урока (из каталога, обновляется после SCORM).
+  const activeLessonFresh = course.modules
+    .flatMap((m) => m.lessons)
+    .find((l) => l.id === activeLesson?.id)
+  const lessonDone = activeLessonFresh?.completed ?? false
 
   return (
     <div>
@@ -129,7 +172,20 @@ export default function CourseDetailPage() {
               </h2>
               {activeLesson ? (
                 owned ? (
-                  <LessonPlayer lesson={activeLesson} />
+                  <div className="space-y-4">
+                    {lessonDone && (
+                      <div className="flex items-center gap-3 rounded-card border border-ocean/30 bg-oceanc-10 px-5 py-3.5">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ocean text-wisdom">
+                          <Check width={16} height={16} />
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold text-neft">Тренинг пройден</p>
+                          <p className="text-[0.78rem] text-ink-60">Урок «{activeLesson.title}» завершён.</p>
+                        </div>
+                      </div>
+                    )}
+                    <LessonPlayer lesson={activeLesson} onScormStatus={handleScormStatus} />
+                  </div>
                 ) : (
                   <div className="flex aspect-video flex-col items-center justify-center rounded-card border border-dashed border-ink-20 bg-ink-5 text-center">
                     <Lock width={30} height={30} className="text-ink-40" />
@@ -172,9 +228,9 @@ export default function CourseDetailPage() {
                               )}>
                                 {lesson.completed ? <Check width={14} height={14} /> : <Book width={13} height={13} />}
                               </span>
-                              <span className="flex-1 text-sm text-neft">{lesson.title}</span>
-                              <Badge tone="outline">{courseFormatLabel[lesson.format]}</Badge>
-                              <span className="hidden w-16 text-right text-xs text-ink-40 sm:block">{lesson.duration}</span>
+                              <span className="min-w-0 flex-1 text-sm text-neft">{lesson.title}</span>
+                              <span className="shrink-0"><Badge tone="outline">{courseFormatLabel[lesson.format]}</Badge></span>
+                              <span className="hidden w-16 shrink-0 text-right text-xs text-ink-40 sm:block">{lesson.duration}</span>
                               {!owned && <Lock width={14} height={14} className="text-ink-40" />}
                             </button>
                           </li>

@@ -1,32 +1,41 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { User } from '@/types'
-import { delay } from '@/lib/utils'
+import { api } from '@/api'
+import type { DemoAccount } from '@/api'
 
 /**
- * Mock-авторизация. Состояние хранится в localStorage, чтобы вход
- * сохранялся между перезагрузками. В продакшене заменяется на реальный
- * провайдер (JWT/сессии): см. README → «Что подключить для production».
+ * Сессия пользователя. Учётные данные проверяет слой данных (`api.auth`),
+ * а здесь хранится только состояние сессии (в localStorage, чтобы вход
+ * сохранялся между перезагрузками). При переходе на реальный бэкенд логика
+ * входа меняется в `src/api/auth.ts`, контекст и UI остаются прежними.
  */
 
-const DEMO_USER: User = {
-  id: 'u-001',
-  name: 'Александр Орлов',
-  email: 'demo@mabl.ru',
-  role: 'Слушатель академии',
-}
-
-const DEMO_CREDENTIALS = { email: 'demo@mabl.ru', password: 'mabl2026' }
-
 const STORAGE_KEY = 'mabl.auth.user'
+
+/** Совместимость со старыми профилями в localStorage (без поля kind). */
+function normalizeUser(raw: unknown): User | null {
+  if (!raw || typeof raw !== 'object') return null
+  const u = raw as Partial<User>
+  if (!u.id || !u.email) return null
+  return {
+    id: u.id,
+    name: u.name ?? '',
+    email: u.email,
+    role: u.role ?? 'Слушатель академии',
+    kind: u.kind === 'admin' ? 'admin' : 'student',
+  }
+}
 
 interface AuthContextValue {
   user: User | null
   isAuthenticated: boolean
-  login: (email: string, password: string) => Promise<void>
+  isAdmin: boolean
+  login: (email: string, password: string) => Promise<User>
   logout: () => void
   recover: (email: string) => Promise<string>
-  demoCredentials: typeof DEMO_CREDENTIALS
+  /** Демо-аккаунты для быстрого входа на экране авторизации. */
+  demoAccounts: DemoAccount[]
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -35,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
-      return raw ? (JSON.parse(raw) as User) : null
+      return raw ? normalizeUser(JSON.parse(raw)) : null
     } catch {
       return null
     }
@@ -47,35 +56,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user])
 
   const login = async (email: string, password: string) => {
-    await delay(600)
-    const matches =
-      email.trim().toLowerCase() === DEMO_CREDENTIALS.email &&
-      password === DEMO_CREDENTIALS.password
-    if (!matches) {
-      throw new Error('Неверный e-mail или пароль. Проверьте данные и попробуйте снова.')
-    }
-    setUser(DEMO_USER)
+    const account = await api.auth.login(email, password)
+    setUser(account)
+    return account
   }
 
   const logout = () => setUser(null)
 
-  const recover = async (email: string) => {
-    await delay(600)
-    if (!email.includes('@')) {
-      throw new Error('Укажите корректный e-mail.')
-    }
-    // Mock: «письмо отправлено»
-    return `Инструкция по восстановлению доступа отправлена на ${email}.`
-  }
+  const recover = (email: string) => api.auth.recover(email)
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       isAuthenticated: Boolean(user),
+      isAdmin: user?.kind === 'admin',
       login,
       logout,
       recover,
-      demoCredentials: DEMO_CREDENTIALS,
+      demoAccounts: api.auth.demoAccounts(),
     }),
     [user],
   )

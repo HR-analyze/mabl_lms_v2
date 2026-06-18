@@ -1,35 +1,54 @@
 import { Link } from 'react-router-dom'
 import type { Course } from '@/types'
-import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { ProgressBar } from './ui/ProgressBar'
-import { Crest } from './brand/Crest'
 import { ArrowRight, Lock } from './ui/Icon'
-import { courseFormatLabel } from '@/lib/labels'
-import { formatPrice } from '@/lib/utils'
+import { formatPrice, cn } from '@/lib/utils'
 
 interface CourseCardProps {
   course: Course
   owned: boolean
 }
 
+/**
+ * Строгая обложка программы (строго по бренд-гайду): сплошная брендовая
+ * плоскость + тонкая академическая рамка + крупное серифное название программы.
+ * Различается по программе цветом (Нефть/Океан) и дисциплиной.
+ * Только бренд-палитра, без фото, градиентов и иллюстраций.
+ */
+function CourseCover({ course }: { course: Course }) {
+  // Океан — для интерактива/чтения (SCORM, лонгрид), Нефть — для видео-программ
+  const isOcean = course.format === 'scorm' || course.format === 'longread'
+
+  return (
+    <Link
+      to={`/courses/${course.id}`}
+      className={cn(
+        'relative flex aspect-[16/9] items-center justify-center overflow-hidden rounded-t-card text-wisdom',
+        isOcean ? 'bg-ocean' : 'bg-neft',
+      )}
+    >
+      {/* тонкая академическая рамка */}
+      <span className="pointer-events-none absolute inset-4 border border-wisdom/20" />
+
+      {/* название программы */}
+      <span className="relative px-8 text-center font-serif text-2xl font-light leading-tight text-wisdom">
+        {course.title}
+      </span>
+
+      {/* дисциплина */}
+      <span className="absolute bottom-3.5 left-5 text-[0.66rem] uppercase tracking-wide text-wisdom/55">
+        {course.tags[0]}
+      </span>
+    </Link>
+  )
+}
+
 /** Карточка курса для каталога и дашборда. */
 export function CourseCard({ course, owned }: CourseCardProps) {
   return (
     <article className="group flex flex-col rounded-card border border-ink-10 bg-wisdom transition-colors duration-200 hover:border-ink-40">
-      {/* Обложка: фирменная плоскость с гербом и паттерном */}
-      <Link
-        to={`/courses/${course.id}`}
-        className="relative flex aspect-[16/9] items-center justify-center overflow-hidden rounded-t-card bg-neft"
-      >
-        <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
-        <Crest className="relative h-16 w-16" onDark />
-        <div className="absolute left-4 top-4 flex gap-2">
-          <Badge tone="dark" className="ring-1 ring-wisdom/20">
-            {courseFormatLabel[course.format]}
-          </Badge>
-        </div>
-      </Link>
+      <CourseCover course={course} />
 
       <div className="flex flex-1 flex-col p-6">
         <div className="mb-3 flex items-center gap-2 text-[0.7rem] uppercase tracking-wide text-ink-60">
@@ -38,12 +57,11 @@ export function CourseCard({ course, owned }: CourseCardProps) {
           <span>{course.durationHours} ч</span>
         </div>
 
-        <h3 className="font-serif text-xl leading-tight text-neft">
+        <p className="text-sm text-ink-60">
           <Link to={`/courses/${course.id}`} className="hover:text-ocean">
-            {course.title}
+            {course.subtitle}
           </Link>
-        </h3>
-        <p className="mt-2 text-sm text-ink-60">{course.subtitle}</p>
+        </p>
 
         <div className="mt-4 flex-1" />
 

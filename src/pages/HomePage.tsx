@@ -5,9 +5,9 @@ import { Badge } from '@/components/ui/Badge'
 import { CourseCard } from '@/components/CourseCard'
 import { Crest } from '@/components/brand/Crest'
 import { ArrowRight, ArrowUpRight, Clock, Pin } from '@/components/ui/Icon'
-import { courses } from '@/data/courses'
-import { news } from '@/data/news'
-import { getNextWebinar } from '@/data/events'
+import { api } from '@/api'
+import { useAsync } from '@/hooks/useAsync'
+import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
 import { formatDate, formatDateTime, formatPrice } from '@/lib/utils'
 
@@ -20,41 +20,41 @@ const stats = [
 
 export default function HomePage() {
   const { isOwned } = usePurchases()
-  const webinar = getNextWebinar()
+  const { courses } = useCourses()
+  const { data: webinar } = useAsync(() => api.events.next(), [])
+  const { data: newsData } = useAsync(() => api.news.list(), [])
   const featured = courses.slice(0, 3)
-  const latestNews = news.slice(0, 3)
+  const latestNews = (newsData ?? []).slice(0, 3)
 
   return (
     <div>
       {/* HERO */}
       <section className="relative overflow-hidden border-b border-ink-10 bg-neft text-wisdom">
         <div className="brand-pattern absolute inset-0 opacity-[0.06]" />
-        <Container className="relative py-24 md:py-32">
-          <div className="grid items-center gap-16 lg:grid-cols-[1.15fr_0.85fr]">
+        <Container className="relative py-16 md:py-32">
+          <div className="grid items-center gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16">
             <div>
-              <p className="eyebrow mb-6 text-wisdom/50">Sapere · Ducere — Знать и вести</p>
-              <h1 className="display-title text-4xl md:text-6xl">
-                Международная академия бизнес-лидерства
+              <p className="eyebrow mb-6 text-wisdom/50">Sapere · Ducere — Знать, чтобы лидировать</p>
+              <h1 className="display-title text-3xl sm:text-4xl md:text-6xl">
+                Международная академия бизнес лидерства
               </h1>
               <p className="mt-7 max-w-xl text-lg leading-relaxed text-wisdom/70">
                 Академическое образование для руководителей нового поколения. Стратегия,
                 финансы, переговоры и лидерство — в строгой образовательной традиции МАБЛ.
               </p>
-              <div className="mt-10 flex flex-wrap gap-4">
-                <Button to="/courses" size="lg">
+              <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-4">
+                <Button to="/courses" size="lg" className="w-full sm:w-auto">
                   Каталог программ
                   <ArrowRight width={18} height={18} />
                 </Button>
-                <Button to="/login" size="lg" variant="secondary" className="border-wisdom/30 text-wisdom hover:border-wisdom hover:bg-wisdom/5">
+                <Button to="/login" size="lg" variant="secondary" className="w-full border-wisdom/30 text-wisdom hover:border-wisdom hover:bg-wisdom/5 sm:w-auto">
                   Личный кабинет
                 </Button>
               </div>
             </div>
 
             <div className="flex justify-center lg:justify-end">
-              <div className="relative flex h-64 w-64 items-center justify-center rounded-card bg-wisdom md:h-80 md:w-80">
-                <Crest withBanner className="h-48 w-48 md:h-60 md:w-60" />
-              </div>
+              <Crest withBanner className="h-60 w-60 md:h-80 md:w-80" />
             </div>
           </div>
         </Container>
@@ -75,6 +75,7 @@ export default function HomePage() {
       </section>
 
       {/* NEXT WEBINAR */}
+      {webinar && (
       <section className="py-20 md:py-24">
         <Container>
           <div className="overflow-hidden rounded-card border border-ink-10">
@@ -107,12 +108,13 @@ export default function HomePage() {
 
               <div className="relative flex items-center justify-center bg-neft p-12">
                 <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
-                <Crest className="relative h-28 w-28" onDark />
+                <Crest className="relative h-36 w-36" />
               </div>
             </div>
           </div>
         </Container>
       </section>
+      )}
 
       {/* COURSES */}
       <section className="border-t border-ink-10 bg-ink-5 py-20 md:py-24">

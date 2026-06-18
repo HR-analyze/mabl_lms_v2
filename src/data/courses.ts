@@ -196,6 +196,36 @@ export const courses: Course[] = [
       },
     ],
   },
+  {
+    id: 'manager-intro',
+    title: 'Эспрессо-тоник тропики',
+    subtitle: 'Вводный интерактивный тренинг',
+    description:
+      'Короткий интерактивный SCORM-тренинг с пошаговым видео-рецептом. Демонстрация загрузки и проигрывания SCORM-пакета на платформе.',
+    format: 'scorm',
+    level: 'Базовый',
+    instructor: 'МАБЛ',
+    durationHours: 1,
+    lessonsCount: 1,
+    price: 0,
+    progress: 0,
+    tags: ['Менеджмент', 'SCORM', 'Тренинг'],
+    modules: [
+      {
+        id: 'm1',
+        title: 'Модуль 1. Введение',
+        lessons: [
+          {
+            id: 'manager-intro-sco',
+            title: 'Эспрессо-тоник тропики',
+            format: 'scorm',
+            duration: '1 ч',
+            launchUrl: '/scorm/manager-intro/res/index.html',
+          },
+        ],
+      },
+    ],
+  },
 ]
 
 export const getCourseById = (id: string): Course | undefined =>

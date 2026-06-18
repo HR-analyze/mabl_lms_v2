@@ -1,6 +1,6 @@
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { notifications as seed } from '@/data/notifications'
+import { api } from '@/api'
 import type { AppNotification } from '@/types'
 
 /** Состояние уведомлений с отметкой о прочтении (общее для ЛК). */
@@ -15,7 +15,15 @@ interface NotificationsContextValue {
 const NotificationsContext = createContext<NotificationsContextValue | null>(null)
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<AppNotification[]>(seed)
+  const [items, setItems] = useState<AppNotification[]>([])
+
+  useEffect(() => {
+    let active = true
+    api.notifications.list().then((list) => active && setItems(list))
+    return () => {
+      active = false
+    }
+  }, [])
 
   const markRead = (id: string) =>
     setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
