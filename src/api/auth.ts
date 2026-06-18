@@ -50,10 +50,13 @@ export const authApi = {
 
   async login(email: string, password: string): Promise<User> {
     if (!USE_MOCK) {
-      return http<User>('/auth/login', {
+      const { user, token } = await http<{ user: User; token: string }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       })
+      const { setToken } = await import('@/lib/token')
+      setToken(token)
+      return user
     }
     await mockDelay(500)
     const account = DEMO_ACCOUNTS.find(

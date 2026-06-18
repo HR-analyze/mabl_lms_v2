@@ -61,7 +61,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return account
   }
 
-  const logout = () => setUser(null)
+  const logout = () => {
+    setUser(null)
+    void import('@/lib/token').then(({ clearToken }) => clearToken())
+  }
 
   const recover = (email: string) => api.auth.recover(email)
 
