@@ -10,6 +10,7 @@ import {
   Document,
   Grid,
   Home,
+  Lock,
   Logout,
   Menu,
   User,
@@ -24,6 +25,7 @@ const adminNav = [
   { to: '/admin/users', label: 'Участники', icon: User, end: false },
   { to: '/admin/orders', label: 'Заказы', icon: Document, end: false },
   { to: '/admin/events', label: 'События', icon: Calendar, end: false },
+  { to: '/admin/database', label: 'База данных', icon: Lock, end: false },
 ]
 
 /** Боковая навигация админ-панели (визуально отличается от кабинета слушателя). */
