@@ -31,6 +31,7 @@ import AdminScormPage from './pages/admin/AdminScormPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminOrdersPage from './pages/admin/AdminOrdersPage'
 import AdminEventsPage from './pages/admin/AdminEventsPage'
+import AdminDatabasePage from './pages/admin/AdminDatabasePage'
 
 export default function App() {
   return (
@@ -77,6 +78,7 @@ export default function App() {
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
           <Route path="/admin/events" element={<AdminEventsPage />} />
+          <Route path="/admin/database" element={<AdminDatabasePage />} />
         </Route>
 
         <Route path="*" element={<NotFoundPage />} />

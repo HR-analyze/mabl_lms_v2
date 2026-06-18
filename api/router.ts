@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import bcrypt from 'bcryptjs'
 import { getSql } from './_db.js'
+import { ensureSchema, initDatabase } from './_seed.js'
 import type { Course, User } from '../src/types'
 
 // Mock-модули служат источником статического контента (только import type внутри —
@@ -18,24 +19,53 @@ import { adminUsers } from '../src/data/users.js'
 /**
  * Единый роутер всех /api/* эндпоинтов.
  *
- * Vercel Hobby ограничивает число serverless-функций, поэтому весь API собран
- * в одну catch-all функцию. Явные файлы (например, api/setup.ts) имеют приоритет
- * над этим маршрутом.
+ * Все /api/* запросы попадают сюда через rewrite в vercel.json
+ * (`/api/(.*) → /api/router?path=$1`) — детерминированно для всех HTTP-методов.
+ * Файл api/setup.ts имеет приоритет (прямое попадание по файловой системе).
  *
  * Каталог курсов и аутентификация — из БД Neon; остальные ресурсы (события,
  * новости, материалы, форум, опросники, заказы, участники) пока отдаются из
  * mock-модулей, единых с фронтендом.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const raw = req.query.path
-  const segments = (Array.isArray(raw) ? raw : [raw]).filter(Boolean) as string[]
+  // CORS — нужен для POST/PUT/DELETE из браузера.
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  if (req.method === 'OPTIONS') return res.status(204).end()
+
+  // Путь приходит в query-параметре path (из rewrite). Fallback — из req.url.
+  const rawPath = req.query.path
+  let segments =
+    (typeof rawPath === 'string'
+      ? rawPath
+      : Array.isArray(rawPath)
+        ? rawPath.join('/')
+        : ''
+    )
+      .split('/')
+      .filter(Boolean)
+
+  if (segments.length === 0) {
+    const pathname = (req.url || '').split('?')[0]
+    segments = pathname.replace(/^\/+/, '').split('/').filter(Boolean)
+    if (segments[0] === 'api') segments = segments.slice(1)
+    if (segments[0] === 'router') segments = segments.slice(1)
+  }
+
   const method = (req.method || 'GET').toUpperCase()
   const path = segments.join('/')
+  console.log(`[api] ${method} /${path} | url=${req.url}`)
 
   try {
     // ---------- AUTH ----------
     if (path === 'auth/login' && method === 'POST') {
       return await login(req, res)
+    }
+    if (path === 'auth/migrate' && method === 'POST') {
+      const sql = getSql()
+      await sql`UPDATE users SET name = 'Администратор' WHERE id = 'u-adm' AND name = 'Елена Северова'`
+      return res.json({ ok: true })
     }
     if (path === 'auth/recover' && method === 'POST') {
       const { email } = parseBody(req)
@@ -102,6 +132,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ---------- NOTIFICATIONS (mock) ----------
     if (path === 'notifications' && method === 'GET') return res.json(notifications)
+
+    // ---------- PROFILE ----------
+    if (path === 'admin/profile' && method === 'PATCH') {
+      return await updateProfile(req, res)
+    }
+
+    // ---------- DATABASE (управление БД из админки) ----------
+    if (path === 'admin/db' && method === 'GET') {
+      return await dbStatus(res)
+    }
+    if (path === 'admin/db/init' && method === 'POST') {
+      const sql = getSql()
+      const counts = await initDatabase(sql)
+      return res.json({ ok: true, counts })
+    }
+    if (path === 'admin/db/reset-courses' && method === 'POST') {
+      return await resetCourses(res)
+    }
+    if (path === 'admin/db/users' && method === 'POST') {
+      return await createDbUser(req, res)
+    }
+    if (segments[0] === 'admin' && segments[1] === 'db' && segments[2] === 'users' && segments.length === 4) {
+      const id = segments[3]
+      if (method === 'PUT') return await updateDbUser(id, req, res)
+      if (method === 'DELETE') return await deleteDbUser(id, res)
+    }
 
     // ---------- ADMIN (mock) ----------
     if (path === 'admin/orders' && method === 'GET') return res.json(orders)
@@ -235,6 +291,91 @@ async function resetCourses(res: VercelResponse) {
     `
   }
   return res.json(seedCourses)
+}
+
+async function updateProfile(req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  const { id, name } = parseBody(req)
+  if (!id || !name) return res.status(400).json({ message: 'id и name обязательны' })
+  const rows = await sql`UPDATE users SET name = ${String(name)} WHERE id = ${String(id)} RETURNING id, name, email, role, kind`
+  if (!rows[0]) return res.status(404).json({ message: 'Пользователь не найден' })
+  const u = rows[0]
+  return res.json({ id: u.id, name: u.name, email: u.email, role: u.role, kind: u.kind })
+}
+
+async function dbStatus(res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const [{ count: coursesCount }] = await sql`SELECT COUNT(*)::int AS count FROM courses`
+  const [{ count: usersCount }] = await sql`SELECT COUNT(*)::int AS count FROM users`
+  const users = await sql`
+    SELECT id, name, email, role, kind, created_at
+    FROM users ORDER BY created_at ASC
+  `
+  return res.json({
+    tables: [
+      { name: 'courses', label: 'Программы', rows: Number(coursesCount) },
+      { name: 'users', label: 'Аккаунты', rows: Number(usersCount) },
+    ],
+    users: users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      kind: u.kind,
+      createdAt: u.created_at,
+    })),
+  })
+}
+
+async function createDbUser(req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const body = parseBody(req)
+  const name = String(body.name ?? '').trim()
+  const email = String(body.email ?? '').trim().toLowerCase()
+  const role = String(body.role ?? '').trim()
+  const kind = body.kind === 'admin' ? 'admin' : 'student'
+  const password = String(body.password ?? '')
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: 'Укажите имя, e-mail и пароль.' })
+  }
+  const exists = await sql`SELECT id FROM users WHERE email = ${email} LIMIT 1`
+  if (exists[0]) return res.status(409).json({ message: 'Пользователь с таким e-mail уже существует.' })
+  const id = `u-${Date.now().toString(36)}`
+  const hash = await bcrypt.hash(password, 10)
+  const finalRole = role || (kind === 'admin' ? 'Администратор платформы' : 'Слушатель академии')
+  await sql`
+    INSERT INTO users (id, name, email, role, kind, password_hash)
+    VALUES (${id}, ${name}, ${email}, ${finalRole}, ${kind}, ${hash})
+  `
+  return res.status(201).json({ id, name, email, role: finalRole, kind })
+}
+
+async function updateDbUser(id: string, req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  const rows = await sql`SELECT id, name, email, role, kind FROM users WHERE id = ${id} LIMIT 1`
+  if (!rows[0]) return res.status(404).json({ message: 'Пользователь не найден' })
+  const cur = rows[0]
+  const body = parseBody(req)
+  const name = body.name !== undefined ? String(body.name).trim() : (cur.name as string)
+  const role = body.role !== undefined ? String(body.role).trim() : (cur.role as string)
+  const kind = body.kind === 'admin' ? 'admin' : body.kind === 'student' ? 'student' : (cur.kind as string)
+  const password = body.password !== undefined ? String(body.password) : ''
+
+  if (password) {
+    const hash = await bcrypt.hash(password, 10)
+    await sql`UPDATE users SET name = ${name}, role = ${role}, kind = ${kind}, password_hash = ${hash} WHERE id = ${id}`
+  } else {
+    await sql`UPDATE users SET name = ${name}, role = ${role}, kind = ${kind} WHERE id = ${id}`
+  }
+  return res.json({ id, name, email: cur.email, role, kind })
+}
+
+async function deleteDbUser(id: string, res: VercelResponse) {
+  const sql = getSql()
+  await sql`DELETE FROM users WHERE id = ${id}`
+  return res.status(204).end()
 }
 
 function slugify(value: string): string {
