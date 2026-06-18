@@ -18,10 +18,12 @@ export interface PaymentIntent {
 }
 
 export interface PaymentResult {
-  status: 'succeeded' | 'failed'
+  status: 'succeeded' | 'failed' | 'redirect'
   transactionId: string
   intent: PaymentIntent
   message: string
+  /** URL формы оплаты при редирект-флоу (реальный PSP). */
+  confirmationUrl?: string
 }
 
 export interface PaymentProvider {

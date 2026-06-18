@@ -20,6 +20,8 @@ interface PurchaseContextValue {
   purchaseCourse: (intent: PaymentIntent) => Promise<PaymentResult>
   /** Записаться на событие (с оплатой, если платное) */
   registerEvent: (eventId: string, intent?: PaymentIntent) => Promise<PaymentResult | void>
+  /** Перезагрузить доступ из источника (после возврата с оплаты). */
+  refreshAccess: () => Promise<void>
   paymentProvider: PaymentProvider
 }
 
@@ -29,6 +31,12 @@ export function PurchaseProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [ownedCourseIds, setOwned] = useState<string[]>([])
   const [registeredEventIds, setRegistered] = useState<string[]>([])
+
+  const refreshAccess = async () => {
+    const access = await api.enrollments.access()
+    setOwned(access.courses)
+    setRegistered(access.events)
+  }
 
   // Загружаем доступ при старте и при смене пользователя (в http-режиме доступ — персональный).
   useEffect(() => {
@@ -45,6 +53,7 @@ export function PurchaseProvider({ children }: { children: ReactNode }) {
 
   const purchaseCourse = async (intent: PaymentIntent): Promise<PaymentResult> => {
     const result = await api.enrollments.purchaseCourse(intent)
+    // Доступ открываем только при мгновенном успехе; при redirect — после возврата с оплаты.
     if (result.status === 'succeeded') {
       setOwned((prev) => (prev.includes(intent.itemId) ? prev : [...prev, intent.itemId]))
     }
@@ -67,6 +76,7 @@ export function PurchaseProvider({ children }: { children: ReactNode }) {
       isRegistered: (id) => registeredEventIds.includes(id),
       purchaseCourse,
       registerEvent,
+      refreshAccess,
       paymentProvider: mockPaymentProvider,
     }),
     [ownedCourseIds, registeredEventIds],

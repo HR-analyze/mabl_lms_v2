@@ -53,6 +53,11 @@ export default function CheckoutPage() {
         currency: 'RUB',
         customerEmail: email,
       })
+      if (result.status === 'redirect' && result.confirmationUrl) {
+        // Реальный платёж: уходим на форму оплаты провайдера.
+        window.location.href = result.confirmationUrl
+        return
+      }
       if (result.status === 'succeeded') {
         setTxId(result.transactionId)
         setDone(true)

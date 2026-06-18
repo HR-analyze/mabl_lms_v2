@@ -3,6 +3,7 @@ import { sql } from './db'
 import { HttpError, getAuth, readBody, requireAdmin, requireAuth } from './http'
 import { hashPassword, signToken, verifyPassword } from './auth'
 import { runSetup } from './setup'
+import { createCoursePayment, fetchPaymentStatus } from './payments'
 import { courses as seedCourses } from '../../src/data/courses'
 import type { Course } from '../../src/types'
 
@@ -85,6 +86,11 @@ export async function route(
     if (secret !== expected) throw new HttpError(403, 'Неверный ключ настройки.')
     const counts = await runSetup()
     return send(res, { ok: true, counts })
+  }
+
+  // --- Вебхук платежей (публичный, вызывается платёжным провайдером) ---
+  if (resource === 'payments' && a === 'webhook' && method === 'POST') {
+    return send(res, await paymentWebhook(req))
   }
 
   // --- Авторизация ---
@@ -331,26 +337,78 @@ async function getAccess(userId: string): Promise<{ courses: string[]; events: s
   }
 }
 
+interface PurchaseResult {
+  status: 'succeeded' | 'redirect'
+  transactionId: string
+  message: string
+  confirmationUrl?: string
+}
+
 async function purchaseCourse(
   userId: string,
   courseId: string,
   req: VercelRequest,
-): Promise<{ status: 'succeeded'; transactionId: string; message: string }> {
-  const { amount = 0, method = 'Карта' } = readBody<{ amount?: number; method?: string }>(req)
-  const course = await getById('courses', courseId)
+): Promise<PurchaseResult> {
+  const { amount = 0, method = 'Карта', returnUrl = '' } = readBody<{
+    amount?: number
+    method?: string
+    returnUrl?: string
+  }>(req)
+  const course = (await getById('courses', courseId)) as { title?: string } | null
   if (!course) throw new HttpError(404, 'Программа не найдена.')
-  // Платёж имитируется (реальный PSP подключается отдельно), но заказ и доступ — настоящие.
+
   const orderId = `ORD-${Date.now().toString(36).toUpperCase()}`
   await sql.query(
     `INSERT INTO orders (id,"userId","courseId",amount,date,status,method)
-     VALUES ($1,$2,$3,$4,CURRENT_DATE,'paid',$5)`,
+     VALUES ($1,$2,$3,$4,CURRENT_DATE,'pending',$5)`,
     [orderId, userId, courseId, amount, method],
   )
+
+  const payment = await createCoursePayment({
+    orderId,
+    amount,
+    description: `Программа: ${course.title ?? courseId}`,
+    returnUrl,
+  })
+
+  if (payment.kind === 'redirect') {
+    // Доступ откроется после подтверждения оплаты вебхуком.
+    return {
+      status: 'redirect',
+      transactionId: orderId,
+      confirmationUrl: payment.confirmationUrl,
+      message: 'Перенаправление на оплату.',
+    }
+  }
+
+  // Имитация — сразу отмечаем оплачено и открываем доступ.
+  await markPaidAndEnroll(orderId, userId, courseId)
+  return { status: 'succeeded', transactionId: orderId, message: 'Оплата успешно проведена.' }
+}
+
+async function markPaidAndEnroll(orderId: string, userId: string, courseId: string) {
+  await sql.query(`UPDATE orders SET status='paid' WHERE id=$1`, [orderId])
   await sql.query(
     `INSERT INTO enrollments ("userId","courseId") VALUES ($1,$2) ON CONFLICT DO NOTHING`,
     [userId, courseId],
   )
-  return { status: 'succeeded', transactionId: orderId, message: 'Оплата успешно проведена.' }
+}
+
+/** Вебхук ЮKassa: подтверждение оплаты → отметить заказ и открыть доступ. */
+async function paymentWebhook(req: VercelRequest): Promise<{ ok: true }> {
+  const body = readBody<{ object?: { id?: string; metadata?: { orderId?: string } } }>(req)
+  const orderId = body.object?.metadata?.orderId
+  const paymentId = body.object?.id
+  if (!orderId || !paymentId) return { ok: true }
+
+  // Подтверждаем статус напрямую у провайдера (не доверяем телу вебхука).
+  const status = await fetchPaymentStatus(paymentId)
+  if (status === 'succeeded') {
+    const { rows } = await sql.query('SELECT "userId","courseId" FROM orders WHERE id=$1', [orderId])
+    const order = rows[0]
+    if (order) await markPaidAndEnroll(orderId, order.userId as string, order.courseId as string)
+  }
+  return { ok: true }
 }
 
 async function registerEvent(

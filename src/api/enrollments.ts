@@ -43,10 +43,16 @@ export const enrollmentsApi = {
 
   async purchaseCourse(intent: PaymentIntent): Promise<PaymentResult> {
     if (!USE_MOCK) {
-      const r = await http<{ status: PaymentResult['status']; transactionId: string; message: string }>(
-        `/me/courses/${intent.itemId}/purchase`,
-        { method: 'POST', body: JSON.stringify({ amount: intent.amount, method: 'Карта' }) },
-      )
+      const returnUrl = `${location.origin}/payment/return?course=${intent.itemId}`
+      const r = await http<{
+        status: PaymentResult['status']
+        transactionId: string
+        message: string
+        confirmationUrl?: string
+      }>(`/me/courses/${intent.itemId}/purchase`, {
+        method: 'POST',
+        body: JSON.stringify({ amount: intent.amount, method: 'Карта', returnUrl }),
+      })
       return { ...r, intent }
     }
     const result = await mockPaymentProvider.pay(intent)
