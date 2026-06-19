@@ -56,4 +56,14 @@ export const newsApi = {
     await mockDelay()
     return store.reset()
   },
+
+  /**
+   * Импорт новостей из Telegram-канала (http-режим). В mock-режиме источника
+   * Telegram нет — возвращаем текущий список без изменений.
+   */
+  async sync(): Promise<{ ok: boolean; channel: string; synced: number }> {
+    if (!USE_MOCK) return http('/news/sync', { method: 'POST' })
+    await mockDelay()
+    return { ok: true, channel: 'mock', synced: store.read().length }
+  },
 }

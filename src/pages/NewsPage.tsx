@@ -46,9 +46,20 @@ export default function NewsPage() {
             to={`/news/${lead.id}`}
             className="group mt-10 grid overflow-hidden rounded-card border border-ink-10 md:grid-cols-2"
           >
-            <div className="relative flex min-h-[220px] items-center justify-center bg-neft">
-              <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
-              <Crest className="relative h-20 w-20" onDark />
+            <div className="relative flex min-h-[220px] items-center justify-center overflow-hidden bg-neft">
+              {lead.cover ? (
+                <img
+                  src={lead.cover}
+                  alt=""
+                  loading="lazy"
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <>
+                  <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
+                  <Crest className="relative h-20 w-20" onDark />
+                </>
+              )}
             </div>
             <div className="p-8 md:p-10">
               <Badge tone="ocean">{lead.category}</Badge>
@@ -66,6 +77,14 @@ export default function NewsPage() {
         <div className="mt-8 grid gap-px overflow-hidden rounded-card border border-ink-10 bg-ink-10 md:grid-cols-3">
           {rest.map((item) => (
             <Link key={item.id} to={`/news/${item.id}`} className="group bg-wisdom p-7 transition-colors hover:bg-ink-5">
+              {item.cover && (
+                <img
+                  src={item.cover}
+                  alt=""
+                  loading="lazy"
+                  className="mb-4 aspect-[16/9] w-full rounded-token object-cover"
+                />
+              )}
               <Badge tone="outline">{item.category}</Badge>
               <p className="mt-4 text-[0.7rem] uppercase tracking-wide text-ink-40">{formatDate(item.date)}</p>
               <h3 className="mt-2 font-serif text-xl leading-snug text-neft group-hover:text-ocean">{item.title}</h3>
