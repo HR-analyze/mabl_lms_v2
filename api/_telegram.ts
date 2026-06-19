@@ -20,7 +20,7 @@ type Sql = NeonQueryFunction<false, false>
 interface RawPost {
   messageId: string
   rawText: string
-  cover?: string
+  images: string[]
   date: string
 }
 
@@ -80,17 +80,23 @@ function parsePosts(html: string): RawPost[] {
     )
     const rawText = textMatch ? textMatch[1] : ''
 
-    // Первое фоновое изображение в блоке — обложка поста (фото или превью видео).
-    const imgMatch = block.match(/background-image:url\('([^']+)'\)/)
-    const cover = imgMatch ? imgMatch[1] : undefined
+    // Все фоновые изображения блока — это фото альбома и превью видео.
+    // Telegram кодирует их как background-image:url('...'); собираем без дублей.
+    const images: string[] = []
+    const imgRe = /background-image:url\('([^']+)'\)/g
+    let imgMatch: RegExpExecArray | null
+    while ((imgMatch = imgRe.exec(block)) !== null) {
+      const url = imgMatch[1].replace(/&amp;/g, '&')
+      if (!images.includes(url)) images.push(url)
+    }
 
     const timeMatch = block.match(/<time[^>]*datetime="([^"]+)"/)
     const date = timeMatch ? timeMatch[1] : new Date().toISOString()
 
     // Пропускаем посты без текста и без картинки (служебные / опросы).
-    if (!rawText && !cover) continue
+    if (!rawText && images.length === 0) continue
 
-    posts.push({ messageId, rawText, cover, date })
+    posts.push({ messageId, rawText, images, date })
   }
 
   return posts
@@ -146,7 +152,8 @@ export function postToNewsItem(post: RawPost, channel: string): NewsItem {
     category: 'Академия',
     date: post.date,
     readingTime: `${minutes} мин`,
-    cover: post.cover,
+    cover: post.images[0],
+    images: post.images,
   }
 }
 
