@@ -31,6 +31,11 @@ import AdminScormPage from './pages/admin/AdminScormPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminOrdersPage from './pages/admin/AdminOrdersPage'
 import AdminEventsPage from './pages/admin/AdminEventsPage'
+import AdminEventEditPage from './pages/admin/AdminEventEditPage'
+import AdminNewsPage from './pages/admin/AdminNewsPage'
+import AdminNewsEditPage from './pages/admin/AdminNewsEditPage'
+import AdminForumPage from './pages/admin/AdminForumPage'
+import AdminForumTopicEditPage from './pages/admin/AdminForumTopicEditPage'
 import AdminDatabasePage from './pages/admin/AdminDatabasePage'
 import OfferPage from './pages/OfferPage'
 import PrivacyPage from './pages/PrivacyPage'
@@ -92,6 +97,14 @@ export default function App() {
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
           <Route path="/admin/events" element={<AdminEventsPage />} />
+          <Route path="/admin/events/new" element={<AdminEventEditPage />} />
+          <Route path="/admin/events/:id" element={<AdminEventEditPage />} />
+          <Route path="/admin/news" element={<AdminNewsPage />} />
+          <Route path="/admin/news/new" element={<AdminNewsEditPage />} />
+          <Route path="/admin/news/:id" element={<AdminNewsEditPage />} />
+          <Route path="/admin/forum" element={<AdminForumPage />} />
+          <Route path="/admin/forum/new" element={<AdminForumTopicEditPage />} />
+          <Route path="/admin/forum/:id" element={<AdminForumTopicEditPage />} />
           <Route path="/admin/database" element={<AdminDatabasePage />} />
         </Route>
 

@@ -97,7 +97,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ---------- EVENTS (mock) ----------
     if (path === 'events' && method === 'GET') return res.json(events)
-    if (path === 'events/next' && method === 'GET') return res.json(getNextWebinar())
+    if (path === 'events/next' && method === 'GET') return res.json(getNextWebinar() ?? null)
     if (segments[0] === 'events' && segments.length === 2 && method === 'GET') {
       return found(res, events.find((e) => e.id === segments[1]), 'Событие не найдено')
     }
