@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Button } from '@/components/ui/Button'
 import { AdminPageHeader, StatCard, StatusPill } from '@/components/admin/AdminUI'
 import { useCourses } from '@/context/CoursesContext'
 import { api } from '@/api'
@@ -23,9 +25,26 @@ const filters: { key: OrderStatus | 'all'; label: string }[] = [
 /** Заказы (покупки программ). */
 export default function AdminOrdersPage() {
   const { getCourseById } = useCourses()
-  const { data: ordersData, loading } = useAsync(() => api.orders.list(), [])
+  const [reloadKey, setReloadKey] = useState(0)
+  const { data: ordersData, loading } = useAsync(() => api.orders.list(), [reloadKey])
   const { data: usersData } = useAsync(() => api.users.list(), [])
   const [status, setStatus] = useState<OrderStatus | 'all'>('all')
+
+  const reload = () => setReloadKey((k) => k + 1)
+
+  const onDelete = async (id: string) => {
+    if (window.confirm(`Удалить заказ ${id}? Действие необратимо.`)) {
+      await api.orders.remove(id)
+      reload()
+    }
+  }
+
+  const onReset = async () => {
+    if (window.confirm('Вернуть список заказов к исходным демо-данным? Все правки будут потеряны.')) {
+      await api.orders.reset()
+      reload()
+    }
+  }
 
   const orders = useMemo(() => ordersData ?? [], [ordersData])
   const userById = useMemo(
@@ -53,6 +72,16 @@ export default function AdminOrdersPage() {
       <AdminPageHeader
         title="Заказы"
         description="История покупок программ участниками: суммы, способы оплаты и статусы."
+        actions={
+          <>
+            <Button onClick={onReset} variant="secondary" size="sm">
+              Сбросить демо-данные
+            </Button>
+            <Button to="/admin/orders/new" size="sm">
+              + Добавить заказ
+            </Button>
+          </>
+        }
       />
 
       <div className="mt-8 grid gap-5 sm:grid-cols-3">
@@ -82,9 +111,10 @@ export default function AdminOrdersPage() {
         <div className="hidden grid-cols-12 gap-4 border-b border-ink-10 bg-ink-5 px-5 py-3 text-[0.68rem] uppercase tracking-wide text-ink-60 md:grid">
           <span className="col-span-2">Заказ</span>
           <span className="col-span-3">Участник</span>
-          <span className="col-span-3">Программа</span>
-          <span className="col-span-2 text-right">Сумма</span>
+          <span className="col-span-2">Программа</span>
+          <span className="col-span-1 text-right">Сумма</span>
           <span className="col-span-2 text-right">Статус</span>
+          <span className="col-span-2 text-right">Действия</span>
         </div>
 
         {loading ? (
@@ -100,21 +130,37 @@ export default function AdminOrdersPage() {
                   className="grid grid-cols-1 gap-2 px-5 py-4 md:grid-cols-12 md:items-center md:gap-4"
                 >
                   <div className="md:col-span-2">
-                    <p className="font-mono text-[0.8rem] text-neft">{o.id}</p>
+                    <Link
+                      to={`/admin/orders/${o.id}`}
+                      className="font-mono text-[0.8rem] text-neft hover:text-ocean"
+                    >
+                      {o.id}
+                    </Link>
                     <p className="text-[0.7rem] text-ink-40">{formatDate(o.date)} · {o.method}</p>
                   </div>
                   <div className="min-w-0 md:col-span-3">
                     <p className="truncate text-sm text-neft">{user?.name ?? 'Участник'}</p>
                     <p className="truncate text-[0.74rem] text-ink-60">{user?.email}</p>
                   </div>
-                  <div className="min-w-0 text-sm text-ink-80 md:col-span-3">
+                  <div className="min-w-0 text-sm text-ink-80 md:col-span-2">
                     <span className="truncate">{course?.title ?? o.courseId}</span>
                   </div>
-                  <div className="whitespace-nowrap text-sm text-neft md:col-span-2 md:text-right">
+                  <div className="whitespace-nowrap text-sm text-neft md:col-span-1 md:text-right">
                     {formatPrice(o.amount)}
                   </div>
                   <div className="md:col-span-2 md:text-right">
                     <StatusPill tone={statusTone[o.status]}>{orderStatusLabel[o.status]}</StatusPill>
+                  </div>
+                  <div className="flex flex-wrap gap-1 md:col-span-2 md:flex-nowrap md:justify-end">
+                    <Button to={`/admin/orders/${o.id}`} variant="ghost" size="sm">
+                      Изменить
+                    </Button>
+                    <button
+                      onClick={() => onDelete(o.id)}
+                      className="whitespace-nowrap rounded-token px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-wide text-ocean hover:bg-oceanc-10"
+                    >
+                      Удалить
+                    </button>
                   </div>
                 </li>
               )

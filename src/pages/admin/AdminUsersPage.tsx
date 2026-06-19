@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { AdminPageHeader, StatCard, StatusPill } from '@/components/admin/AdminUI'
 import { api } from '@/api'
@@ -23,7 +25,8 @@ const filters: { key: AdminUserStatus | 'all'; label: string }[] = [
 
 /** Управление участниками платформы. */
 export default function AdminUsersPage() {
-  const { data, loading } = useAsync(() => api.users.list(), [])
+  const [reloadKey, setReloadKey] = useState(0)
+  const { data, loading } = useAsync(() => api.users.list(), [reloadKey])
   const [users, setUsers] = useState<AdminUser[]>([])
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<AdminUserStatus | 'all'>('all')
@@ -32,16 +35,32 @@ export default function AdminUsersPage() {
     if (data) setUsers(data)
   }, [data])
 
+  const reload = () => setReloadKey((k) => k + 1)
+
   const toggleBlock = (id: string) =>
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id !== id) return u
         const next: AdminUserStatus = u.status === 'blocked' ? 'active' : 'blocked'
-        // Оптимистичное обновление + отправка в слой данных.
+        // Оптимистичное обновление + сохранение в слой данных.
         void api.users.setStatus(id, next)
         return { ...u, status: next }
       }),
     )
+
+  const onDelete = async (id: string, name: string) => {
+    if (window.confirm(`Удалить участника «${name}»? Действие необратимо.`)) {
+      await api.users.remove(id)
+      reload()
+    }
+  }
+
+  const onReset = async () => {
+    if (window.confirm('Вернуть список участников к исходным демо-данным? Все правки будут потеряны.')) {
+      await api.users.reset()
+      reload()
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -60,6 +79,16 @@ export default function AdminUsersPage() {
       <AdminPageHeader
         title="Участники"
         description="Список зарегистрированных пользователей: статус, записи на программы и прогресс."
+        actions={
+          <>
+            <Button onClick={onReset} variant="secondary" size="sm">
+              Сбросить демо-данные
+            </Button>
+            <Button to="/admin/users/new" size="sm">
+              + Добавить участника
+            </Button>
+          </>
+        }
       />
 
       <div className="mt-8 grid gap-5 sm:grid-cols-3">
@@ -97,11 +126,11 @@ export default function AdminUsersPage() {
       {/* Таблица */}
       <div className="mt-6 overflow-hidden rounded-card border border-ink-10">
         <div className="hidden grid-cols-12 gap-4 border-b border-ink-10 bg-ink-5 px-5 py-3 text-[0.68rem] uppercase tracking-wide text-ink-60 md:grid">
-          <span className="col-span-4">Участник</span>
+          <span className="col-span-3">Участник</span>
           <span className="col-span-2">Статус</span>
           <span className="col-span-1 text-center">Программ</span>
-          <span className="col-span-3">Прогресс</span>
-          <span className="col-span-2 text-right">Действия</span>
+          <span className="col-span-2">Прогресс</span>
+          <span className="col-span-4 text-right">Действия</span>
         </div>
 
         {loading ? (
@@ -113,9 +142,14 @@ export default function AdminUsersPage() {
                 key={u.id}
                 className="grid grid-cols-1 gap-3 px-5 py-4 md:grid-cols-12 md:items-center md:gap-4"
               >
-                <div className="min-w-0 md:col-span-4">
+                <div className="min-w-0 md:col-span-3">
                   <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-medium text-neft">{u.name}</p>
+                    <Link
+                      to={`/admin/users/${u.id}`}
+                      className="truncate text-sm font-medium text-neft hover:text-ocean"
+                    >
+                      {u.name}
+                    </Link>
                     {u.role === 'admin' && <Badge tone="dark">Админ</Badge>}
                   </div>
                   <p className="truncate text-[0.78rem] text-ink-60">{u.email}</p>
@@ -127,15 +161,15 @@ export default function AdminUsersPage() {
                 <div className="text-sm text-ink-80 md:col-span-1 md:text-center">
                   {u.enrolledCourseIds.length}
                 </div>
-                <div className="md:col-span-3">
+                <div className="md:col-span-2">
                   {u.role === 'student' ? (
                     <ProgressBar value={u.avgProgress} showLabel />
                   ) : (
                     <span className="text-sm text-ink-40">—</span>
                   )}
                 </div>
-                <div className="md:col-span-2 md:text-right">
-                  {u.role === 'student' ? (
+                <div className="flex flex-wrap gap-1 md:col-span-4 md:flex-nowrap md:justify-end">
+                  {u.role === 'student' && (
                     <button
                       onClick={() => toggleBlock(u.id)}
                       className={cn(
@@ -147,9 +181,16 @@ export default function AdminUsersPage() {
                     >
                       {u.status === 'blocked' ? 'Разблокировать' : 'Заблокировать'}
                     </button>
-                  ) : (
-                    <span className="text-[0.7rem] uppercase tracking-wide text-ink-30">—</span>
                   )}
+                  <Button to={`/admin/users/${u.id}`} variant="ghost" size="sm">
+                    Изменить
+                  </Button>
+                  <button
+                    onClick={() => onDelete(u.id, u.name)}
+                    className="whitespace-nowrap rounded-token px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-wide text-ocean hover:bg-oceanc-10"
+                  >
+                    Удалить
+                  </button>
                 </div>
               </li>
             ))}

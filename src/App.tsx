@@ -29,7 +29,9 @@ import AdminCoursesPage from './pages/admin/AdminCoursesPage'
 import AdminCourseEditPage from './pages/admin/AdminCourseEditPage'
 import AdminScormPage from './pages/admin/AdminScormPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
+import AdminUserEditPage from './pages/admin/AdminUserEditPage'
 import AdminOrdersPage from './pages/admin/AdminOrdersPage'
+import AdminOrderEditPage from './pages/admin/AdminOrderEditPage'
 import AdminEventsPage from './pages/admin/AdminEventsPage'
 import AdminEventEditPage from './pages/admin/AdminEventEditPage'
 import AdminNewsPage from './pages/admin/AdminNewsPage'
@@ -95,7 +97,11 @@ export default function App() {
           <Route path="/admin/courses/:id" element={<AdminCourseEditPage />} />
           <Route path="/admin/scorm" element={<AdminScormPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="/admin/users/new" element={<AdminUserEditPage />} />
+          <Route path="/admin/users/:id" element={<AdminUserEditPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
+          <Route path="/admin/orders/new" element={<AdminOrderEditPage />} />
+          <Route path="/admin/orders/:id" element={<AdminOrderEditPage />} />
           <Route path="/admin/events" element={<AdminEventsPage />} />
           <Route path="/admin/events/new" element={<AdminEventEditPage />} />
           <Route path="/admin/events/:id" element={<AdminEventEditPage />} />
