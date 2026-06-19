@@ -54,6 +54,15 @@ export default {
         card: '0 1px 0 0 #ECECEE',
         soft: '0 16px 48px -24px rgba(33,33,40,0.18)',
       },
+      keyframes: {
+        fadeIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+      },
+      animation: {
+        fadeIn: 'fadeIn 0.4s ease',
+      },
       letterSpacings: {},
     },
   },

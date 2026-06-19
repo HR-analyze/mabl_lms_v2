@@ -3,7 +3,8 @@ import { cn } from '@/lib/utils'
 
 /**
  * Карусель изображений: автолистание, стрелки, точки и свайп на тач-устройствах.
- * Картинки показываются целиком (object-contain) на тёмной подложке — без обрезки.
+ * Высота подстраивается под текущее фото (без чёрных полей по бокам), картинка
+ * показывается целиком — без обрезки.
  */
 export function Carousel({
   images,
@@ -41,47 +42,31 @@ export function Carousel({
     touchStartX.current = null
   }
 
+  const arrowClass =
+    'absolute top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-neft/70 text-3xl leading-none text-wisdom shadow-lg ring-1 ring-wisdom/30 backdrop-blur transition hover:bg-neft hover:scale-105'
+
   return (
     <div
-      className={cn('group relative overflow-hidden rounded-card bg-neft', className)}
+      className={cn(
+        'group relative flex items-center justify-center overflow-hidden rounded-card bg-ink-5',
+        className,
+      )}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
     >
-      <div
-        className="flex transition-transform duration-500 ease-out"
-        style={{ transform: `translateX(-${index * 100}%)` }}
-      >
-        {images.map((src, i) => (
-          <div
-            key={i}
-            className="flex h-[20rem] min-w-full items-center justify-center sm:h-[26rem] md:h-[32rem]"
-          >
-            <img
-              src={src}
-              alt=""
-              loading={i === 0 ? undefined : 'lazy'}
-              className="max-h-full max-w-full object-contain"
-            />
-          </div>
-        ))}
-      </div>
+      <img
+        key={index}
+        src={images[index]}
+        alt=""
+        className="block max-h-[34rem] w-auto max-w-full animate-fadeIn"
+      />
 
       {count > 1 && (
         <>
-          <button
-            type="button"
-            aria-label="Предыдущее фото"
-            onClick={prev}
-            className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-neft/55 text-xl text-wisdom backdrop-blur transition-opacity hover:bg-neft/80 md:opacity-0 md:group-hover:opacity-100"
-          >
+          <button type="button" aria-label="Предыдущее фото" onClick={prev} className={cn(arrowClass, 'left-3 pb-1 pr-0.5')}>
             ‹
           </button>
-          <button
-            type="button"
-            aria-label="Следующее фото"
-            onClick={next}
-            className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-neft/55 text-xl text-wisdom backdrop-blur transition-opacity hover:bg-neft/80 md:opacity-0 md:group-hover:opacity-100"
-          >
+          <button type="button" aria-label="Следующее фото" onClick={next} className={cn(arrowClass, 'right-3 pb-1 pl-0.5')}>
             ›
           </button>
 
@@ -93,14 +78,14 @@ export function Carousel({
                 aria-label={`Фото ${i + 1}`}
                 onClick={() => go(i)}
                 className={cn(
-                  'h-2 rounded-full transition-all',
-                  i === index ? 'w-5 bg-wisdom' : 'w-2 bg-wisdom/50 hover:bg-wisdom/80',
+                  'h-2 rounded-full shadow ring-1 ring-neft/20 transition-all',
+                  i === index ? 'w-5 bg-wisdom' : 'w-2 bg-wisdom/70 hover:bg-wisdom',
                 )}
               />
             ))}
           </div>
 
-          <div className="absolute right-3 top-3 rounded-full bg-neft/55 px-2.5 py-1 text-[0.65rem] font-semibold text-wisdom backdrop-blur">
+          <div className="absolute right-3 top-3 rounded-full bg-neft/70 px-2.5 py-1 text-[0.65rem] font-semibold text-wisdom backdrop-blur">
             {index + 1}/{count}
           </div>
         </>
