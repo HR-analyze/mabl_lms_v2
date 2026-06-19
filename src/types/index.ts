@@ -54,6 +54,22 @@ export interface NewsItem {
   images?: string[]
 }
 
+export interface NewsComment {
+  id: string
+  newsId: string
+  userId?: string | null
+  author: string
+  body: string
+  createdAt: string
+}
+
+export interface NewsReactions {
+  /** Сводка: эмодзи → число реакций. */
+  counts: Record<string, number>
+  /** Реакции текущего пользователя (для подсветки). */
+  mine: string[]
+}
+
 export type MaterialType = 'PDF' | 'Шаблон' | 'Презентация' | 'Чек-лист' | 'Видео'
 
 export interface Material {
