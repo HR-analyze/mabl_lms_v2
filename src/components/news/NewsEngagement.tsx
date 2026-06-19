@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Input'
+import { Linkify } from '@/components/ui/Linkify'
 import { api } from '@/api'
 import { useAuth } from '@/context/AuthContext'
 import { cn, formatDateTime } from '@/lib/utils'
@@ -169,7 +170,9 @@ export function NewsEngagement({ newsId }: { newsId: string }) {
                   </button>
                 )}
               </div>
-              <p className="mt-3 whitespace-pre-wrap text-ink-80">{c.body}</p>
+              <p className="mt-3 whitespace-pre-wrap text-ink-80">
+                <Linkify text={c.body} />
+              </p>
             </li>
           ))}
         </ul>
