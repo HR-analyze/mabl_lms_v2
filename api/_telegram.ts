@@ -80,13 +80,15 @@ function parsePosts(html: string): RawPost[] {
     )
     const rawText = textMatch ? textMatch[1] : ''
 
-    // Все фоновые изображения блока — это фото альбома и превью видео.
-    // Telegram кодирует их как background-image:url('...'); собираем без дублей.
+    // Берём фон ТОЛЬКО у настоящих медиа-блоков (фото/видео), но не у эмодзи —
+    // Telegram рендерит эмодзи тем же background-image, их включать не нужно.
     const images: string[] = []
-    const imgRe = /background-image:url\('([^']+)'\)/g
+    const imgRe =
+      /tgme_widget_message_(?:photo_wrap|video_thumb|roundvideo_thumb)[^"]*"[^>]*?background-image:url\('([^']+)'\)/g
     let imgMatch: RegExpExecArray | null
     while ((imgMatch = imgRe.exec(block)) !== null) {
       const url = imgMatch[1].replace(/&amp;/g, '&')
+      if (url.includes('/img/emoji/')) continue
       if (!images.includes(url)) images.push(url)
     }
 
