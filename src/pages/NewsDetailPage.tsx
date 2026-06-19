@@ -41,9 +41,19 @@ export default function NewsDetailPage() {
           <h1 className="mt-3 font-serif text-4xl leading-tight text-neft">{item.title}</h1>
         </div>
 
-        <div className="relative my-10 flex h-56 items-center justify-center overflow-hidden rounded-card bg-neft">
-          <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
-          <Crest className="relative h-24 w-24" onDark />
+        <div className="relative my-10 flex h-56 items-center justify-center overflow-hidden rounded-card bg-neft md:h-80">
+          {item.cover ? (
+            <img
+              src={item.cover}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          ) : (
+            <>
+              <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
+              <Crest className="relative h-24 w-24" onDark />
+            </>
+          )}
         </div>
 
         <div className="space-y-5 text-lg leading-relaxed text-ink-80">

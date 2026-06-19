@@ -11,6 +11,7 @@ import { formatDate } from '@/lib/utils'
 /** Админ-панель: управление новостями (список + действия). */
 export default function AdminNewsPage() {
   const [reloadKey, setReloadKey] = useState(0)
+  const [syncing, setSyncing] = useState(false)
   const { data, loading } = useAsync(() => api.news.list(), [reloadKey])
   const news = data ?? []
 
@@ -23,15 +24,39 @@ export default function AdminNewsPage() {
     }
   }
 
+  const onSync = async () => {
+    setSyncing(true)
+    try {
+      const result = await api.news.sync()
+      reload()
+      window.alert(
+        `Импортировано из Telegram-канала @${result.channel}: ${result.synced} публикаций.`,
+      )
+    } catch (err) {
+      window.alert(
+        `Не удалось обновить из Telegram: ${
+          err instanceof Error ? err.message : 'неизвестная ошибка'
+        }`,
+      )
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   return (
     <div>
       <AdminPageHeader
         title="Новости"
         description={`Всего публикаций: ${news.length}. Создавайте, редактируйте и удаляйте новости академии.`}
         actions={
-          <Button to="/admin/news/new" size="sm">
-            + Добавить новость
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="ghost" size="sm" onClick={onSync} disabled={syncing}>
+              {syncing ? 'Обновление…' : '↻ Обновить из Telegram'}
+            </Button>
+            <Button to="/admin/news/new" size="sm">
+              + Добавить новость
+            </Button>
+          </div>
         }
       />
 
