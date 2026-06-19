@@ -112,6 +112,13 @@ function htmlToText(html: string): string {
   return html
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div)>/gi, '\n')
+    // Ссылки: сохраняем адрес, чтобы он остался кликабельным в тексте.
+    // Если текст ссылки отличается от адреса — выводим «текст (адрес)».
+    .replace(/<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href: string, inner: string) => {
+      const label = inner.replace(/<[^>]+>/g, '').trim()
+      if (!label || label === href || /^https?:\/\//i.test(label)) return href
+      return `${label} (${href})`
+    })
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')

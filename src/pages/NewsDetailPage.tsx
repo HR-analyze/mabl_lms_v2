@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Crest } from '@/components/brand/Crest'
 import { Carousel } from '@/components/ui/Carousel'
 import { NewsEngagement } from '@/components/news/NewsEngagement'
+import { Linkify } from '@/components/ui/Linkify'
 import { api } from '@/api'
 import { useAsync } from '@/hooks/useAsync'
 import { formatDate } from '@/lib/utils'
@@ -63,7 +64,9 @@ export default function NewsDetailPage() {
 
         <div className="space-y-5 text-lg leading-relaxed text-ink-80">
           {item.body.map((p, i) => (
-            <p key={i}>{p}</p>
+            <p key={i}>
+              <Linkify text={p} />
+            </p>
           ))}
         </div>
 
