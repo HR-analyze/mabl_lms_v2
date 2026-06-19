@@ -121,10 +121,14 @@ function htmlToText(html: string): string {
     .trim()
 }
 
+/** Обрезает строку до max символов по границе слова, добавляя «…». */
 function truncate(value: string, max: number): string {
   const v = value.trim()
   if (v.length <= max) return v
-  return `${v.slice(0, max - 1).trimEnd()}…`
+  const slice = v.slice(0, max)
+  const lastSpace = slice.lastIndexOf(' ')
+  const base = (lastSpace > max * 0.6 ? slice.slice(0, lastSpace) : slice).trimEnd()
+  return `${base.replace(/[.,;:—–-]+$/, '')}…`
 }
 
 /** Маппит сырой пост в доменную модель новости. */
@@ -135,11 +139,13 @@ export function postToNewsItem(post: RawPost, channel: string): NewsItem {
     .map((s) => s.trim())
     .filter(Boolean)
 
-  const title = lines.length > 0 ? truncate(lines[0], 120) : 'Новость канала'
-  const restLines = lines.slice(1)
-  const body = restLines.length > 0 ? restLines : lines.length > 0 ? lines : [title]
-  const excerptSource = restLines.join(' ') || lines.join(' ') || title
-  const excerpt = truncate(excerptSource, 200)
+  // Заголовок — короткая «шапка» из первой строки поста (для карточек и H1).
+  const title = lines.length > 0 ? truncate(lines[0], 90) : 'Новость канала'
+  // Тело — ПОЛНЫЙ текст поста (первая строка не теряется), абзацами.
+  const body = lines.length > 0 ? lines : [title]
+  // Анонс — продолжение после первой строки, иначе сам текст.
+  const rest = lines.slice(1).join(' ')
+  const excerpt = truncate(rest || lines.join(' ') || title, 200)
 
   const words = text ? text.split(/\s+/).filter(Boolean).length : 0
   const minutes = Math.max(1, Math.round(words / 150))
