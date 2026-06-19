@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 import { getSql } from './_db.js'
 import { ensureSchema, initDatabase } from './_seed.js'
 import { syncTelegramNews } from './_telegram.js'
-import type { Course, NewsItem, User } from '../src/types'
+import type { AdminUser, Course, NewsItem, Order, User } from '../src/types'
 
 // Mock-модули служат источником статического контента (только import type внутри —
 // при сборке зависимостей от @/ не остаётся). Расширения .js обязательны для ESM.
@@ -192,23 +192,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (method === 'DELETE') return await deleteDbUser(id, res)
     }
 
-    // ---------- ADMIN (mock) ----------
-    if (path === 'admin/orders' && method === 'GET') return res.json(orders)
-    if (path === 'admin/users' && method === 'GET') return res.json(adminUsers)
     if (path === 'admin/scorm' && method === 'GET') return res.json([])
-    if (segments[0] === 'admin' && segments[1] === 'users' && segments.length === 3 && method === 'GET') {
-      return found(res, adminUsers.find((u) => u.id === segments[2]), 'Участник не найден')
-    }
+
+    // ---------- ADMIN · УЧАСТНИКИ (БД) ----------
+    if (path === 'admin/users' && method === 'GET') return res.json(await listParticipants())
+    if (path === 'admin/users' && method === 'POST') return await createParticipant(req, res)
+    if (path === 'admin/users/reset' && method === 'POST') return await resetParticipants(res)
     if (
       segments[0] === 'admin' &&
       segments[1] === 'users' &&
       segments[3] === 'status' &&
       method === 'PATCH'
     ) {
-      const user = adminUsers.find((u) => u.id === segments[2])
-      if (!user) return res.status(404).json({ message: 'Участник не найден' })
       const { status } = parseBody(req)
-      return res.json({ ...user, status })
+      return await setParticipantStatus(segments[2], String(status ?? ''), res)
+    }
+    if (segments[0] === 'admin' && segments[1] === 'users' && segments.length === 3) {
+      const id = segments[2]
+      if (method === 'GET') return found(res, await getParticipant(id), 'Участник не найден')
+      if (method === 'PUT') return await updateParticipant(id, req, res)
+      if (method === 'DELETE') return await deleteParticipant(id, res)
+    }
+
+    // ---------- ADMIN · ЗАКАЗЫ (БД) ----------
+    if (path === 'admin/orders' && method === 'GET') return res.json(await listOrders())
+    if (path === 'admin/orders' && method === 'POST') return await createOrder(req, res)
+    if (path === 'admin/orders/reset' && method === 'POST') return await resetOrders(res)
+    if (segments[0] === 'admin' && segments[1] === 'orders' && segments.length === 3) {
+      const id = segments[2]
+      if (method === 'GET') return found(res, await getOrder(id), 'Заказ не найден')
+      if (method === 'PUT') return await updateOrder(id, req, res)
+      if (method === 'DELETE') return await deleteOrder(id, res)
     }
 
     return res.status(404).json({ message: `Маршрут не найден: ${method} /api/${path}` })
@@ -484,6 +498,178 @@ async function toggleReaction(newsId: string, req: VercelRequest, res: VercelRes
     `
   }
   return res.json(await getReactions(newsId, userId))
+}
+
+// ---------------- admin participants (БД) ----------------
+
+async function ensureParticipantsSeeded(sql: ReturnType<typeof getSql>) {
+  const [{ count }] = await sql`SELECT COUNT(*)::int AS count FROM participants`
+  if (Number(count) > 0) return
+  for (let i = 0; i < adminUsers.length; i += 1) {
+    const p = adminUsers[i]
+    await sql`
+      INSERT INTO participants (id, data, sort_order)
+      VALUES (${p.id}, ${JSON.stringify(p)}::jsonb, ${i})
+      ON CONFLICT (id) DO NOTHING
+    `
+  }
+}
+
+async function listParticipants(): Promise<AdminUser[]> {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await ensureParticipantsSeeded(sql)
+  const rows = await sql`SELECT data FROM participants ORDER BY sort_order ASC`
+  return rows.map((r) => r.data as AdminUser)
+}
+
+async function getParticipant(id: string): Promise<AdminUser | undefined> {
+  const sql = getSql()
+  const rows = await sql`SELECT data FROM participants WHERE id = ${id} LIMIT 1`
+  return rows[0] ? (rows[0].data as AdminUser) : adminUsers.find((u) => u.id === id)
+}
+
+async function createParticipant(req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const body = parseBody(req) as Partial<AdminUser>
+  const taken = await sql`SELECT id FROM participants`
+  const ids = new Set(taken.map((r) => r.id as string))
+  const id = uniqueId((body.id && String(body.id).trim()) || `u-${Date.now().toString(36)}`, ids)
+  const participant = { ...body, id } as AdminUser
+  const [{ max }] = await sql`SELECT COALESCE(MAX(sort_order), 0) + 1 AS max FROM participants`
+  await sql`
+    INSERT INTO participants (id, data, sort_order)
+    VALUES (${id}, ${JSON.stringify(participant)}::jsonb, ${Number(max)})
+  `
+  return res.status(201).json(participant)
+}
+
+async function updateParticipant(id: string, req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  const rows = await sql`SELECT data FROM participants WHERE id = ${id} LIMIT 1`
+  if (!rows[0]) return res.status(404).json({ message: 'Участник не найден' })
+  const patch = parseBody(req) as Partial<AdminUser>
+  const next = { ...(rows[0].data as AdminUser), ...patch, id } as AdminUser
+  await sql`UPDATE participants SET data = ${JSON.stringify(next)}::jsonb, updated_at = NOW() WHERE id = ${id}`
+  return res.json(next)
+}
+
+async function setParticipantStatus(id: string, status: string, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await ensureParticipantsSeeded(sql)
+  const rows = await sql`SELECT data FROM participants WHERE id = ${id} LIMIT 1`
+  if (!rows[0]) return res.status(404).json({ message: 'Участник не найден' })
+  const next = { ...(rows[0].data as AdminUser), status } as AdminUser
+  await sql`UPDATE participants SET data = ${JSON.stringify(next)}::jsonb, updated_at = NOW() WHERE id = ${id}`
+  return res.json(next)
+}
+
+async function deleteParticipant(id: string, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await ensureParticipantsSeeded(sql)
+  await sql`DELETE FROM participants WHERE id = ${id}`
+  return res.status(204).end()
+}
+
+async function resetParticipants(res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await sql`DELETE FROM participants`
+  for (let i = 0; i < adminUsers.length; i += 1) {
+    await sql`
+      INSERT INTO participants (id, data, sort_order)
+      VALUES (${adminUsers[i].id}, ${JSON.stringify(adminUsers[i])}::jsonb, ${i})
+    `
+  }
+  return res.json(adminUsers)
+}
+
+// ---------------- admin orders (БД) ----------------
+
+async function ensureOrdersSeeded(sql: ReturnType<typeof getSql>) {
+  const [{ count }] = await sql`SELECT COUNT(*)::int AS count FROM orders`
+  if (Number(count) > 0) return
+  for (let i = 0; i < orders.length; i += 1) {
+    const o = orders[i]
+    await sql`
+      INSERT INTO orders (id, data, sort_order)
+      VALUES (${o.id}, ${JSON.stringify(o)}::jsonb, ${i})
+      ON CONFLICT (id) DO NOTHING
+    `
+  }
+}
+
+async function listOrders(): Promise<Order[]> {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await ensureOrdersSeeded(sql)
+  const rows = await sql`SELECT data FROM orders ORDER BY sort_order ASC`
+  return rows.map((r) => r.data as Order)
+}
+
+async function getOrder(id: string): Promise<Order | undefined> {
+  const sql = getSql()
+  const rows = await sql`SELECT data FROM orders WHERE id = ${id} LIMIT 1`
+  return rows[0] ? (rows[0].data as Order) : orders.find((o) => o.id === id)
+}
+
+async function createOrder(req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const body = parseBody(req) as Partial<Order>
+  const taken = await sql`SELECT id FROM orders`
+  const ids = new Set(taken.map((r) => r.id as string))
+  let id = (body.id && String(body.id).trim()) || ''
+  if (!id) {
+    let maxNum = 1042
+    for (const existing of ids) {
+      const n = Number(existing.replace(/\D/g, ''))
+      if (Number.isFinite(n) && n > maxNum) maxNum = n
+    }
+    id = `ORD-${maxNum + 1}`
+  }
+  id = uniqueId(id, ids)
+  const order = { ...body, id } as Order
+  const [{ min }] = await sql`SELECT COALESCE(MIN(sort_order), 0) - 1 AS min FROM orders`
+  await sql`
+    INSERT INTO orders (id, data, sort_order)
+    VALUES (${id}, ${JSON.stringify(order)}::jsonb, ${Number(min)})
+  `
+  return res.status(201).json(order)
+}
+
+async function updateOrder(id: string, req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  const rows = await sql`SELECT data FROM orders WHERE id = ${id} LIMIT 1`
+  if (!rows[0]) return res.status(404).json({ message: 'Заказ не найден' })
+  const patch = parseBody(req) as Partial<Order>
+  const next = { ...(rows[0].data as Order), ...patch, id } as Order
+  await sql`UPDATE orders SET data = ${JSON.stringify(next)}::jsonb, updated_at = NOW() WHERE id = ${id}`
+  return res.json(next)
+}
+
+async function deleteOrder(id: string, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await ensureOrdersSeeded(sql)
+  await sql`DELETE FROM orders WHERE id = ${id}`
+  return res.status(204).end()
+}
+
+async function resetOrders(res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await sql`DELETE FROM orders`
+  for (let i = 0; i < orders.length; i += 1) {
+    await sql`
+      INSERT INTO orders (id, data, sort_order)
+      VALUES (${orders[i].id}, ${JSON.stringify(orders[i])}::jsonb, ${i})
+    `
+  }
+  return res.json(orders)
 }
 
 async function updateProfile(req: VercelRequest, res: VercelResponse) {
