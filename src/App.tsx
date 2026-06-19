@@ -29,9 +29,23 @@ import AdminCoursesPage from './pages/admin/AdminCoursesPage'
 import AdminCourseEditPage from './pages/admin/AdminCourseEditPage'
 import AdminScormPage from './pages/admin/AdminScormPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
+import AdminUserEditPage from './pages/admin/AdminUserEditPage'
 import AdminOrdersPage from './pages/admin/AdminOrdersPage'
+import AdminOrderEditPage from './pages/admin/AdminOrderEditPage'
 import AdminEventsPage from './pages/admin/AdminEventsPage'
+import AdminEventEditPage from './pages/admin/AdminEventEditPage'
+import AdminNewsPage from './pages/admin/AdminNewsPage'
+import AdminNewsEditPage from './pages/admin/AdminNewsEditPage'
+import AdminForumPage from './pages/admin/AdminForumPage'
+import AdminForumTopicEditPage from './pages/admin/AdminForumTopicEditPage'
 import AdminDatabasePage from './pages/admin/AdminDatabasePage'
+import OfferPage from './pages/OfferPage'
+import PrivacyPage from './pages/PrivacyPage'
+import TermsPage from './pages/TermsPage'
+import RequisitesPage from './pages/RequisitesPage'
+import ConsentPersonalDataPage from './pages/ConsentPersonalDataPage'
+import ConsentMarketingPage from './pages/ConsentMarketingPage'
+import DocumentsPage from './pages/DocumentsPage'
 
 export default function App() {
   return (
@@ -57,6 +71,13 @@ export default function App() {
           <Route path="/materials/:id" element={<MaterialDetailPage />} />
           <Route path="/surveys" element={<SurveysPage />} />
           <Route path="/surveys/:id" element={<SurveyDetailPage />} />
+          <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/requisites" element={<RequisitesPage />} />
+          <Route path="/offer" element={<OfferPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/consent-personal-data" element={<ConsentPersonalDataPage />} />
+          <Route path="/consent-marketing" element={<ConsentMarketingPage />} />
         </Route>
 
         {/* Аутентификация (без общего каркаса) */}
@@ -76,8 +97,20 @@ export default function App() {
           <Route path="/admin/courses/:id" element={<AdminCourseEditPage />} />
           <Route path="/admin/scorm" element={<AdminScormPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="/admin/users/new" element={<AdminUserEditPage />} />
+          <Route path="/admin/users/:id" element={<AdminUserEditPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
+          <Route path="/admin/orders/new" element={<AdminOrderEditPage />} />
+          <Route path="/admin/orders/:id" element={<AdminOrderEditPage />} />
           <Route path="/admin/events" element={<AdminEventsPage />} />
+          <Route path="/admin/events/new" element={<AdminEventEditPage />} />
+          <Route path="/admin/events/:id" element={<AdminEventEditPage />} />
+          <Route path="/admin/news" element={<AdminNewsPage />} />
+          <Route path="/admin/news/new" element={<AdminNewsEditPage />} />
+          <Route path="/admin/news/:id" element={<AdminNewsEditPage />} />
+          <Route path="/admin/forum" element={<AdminForumPage />} />
+          <Route path="/admin/forum/new" element={<AdminForumTopicEditPage />} />
+          <Route path="/admin/forum/:id" element={<AdminForumTopicEditPage />} />
           <Route path="/admin/database" element={<AdminDatabasePage />} />
         </Route>
 

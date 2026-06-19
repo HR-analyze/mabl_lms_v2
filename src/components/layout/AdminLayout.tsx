@@ -5,6 +5,7 @@ import { Button } from '../ui/Button'
 import {
   ArrowUpRight,
   Calendar,
+  Chat,
   Clipboard,
   Close,
   Document,
@@ -13,6 +14,7 @@ import {
   Lock,
   Logout,
   Menu,
+  Newspaper,
   User,
 } from '../ui/Icon'
 import { useAuth } from '@/context/AuthContext'
@@ -25,6 +27,8 @@ const adminNav = [
   { to: '/admin/users', label: 'Участники', icon: User, end: false },
   { to: '/admin/orders', label: 'Заказы', icon: Document, end: false },
   { to: '/admin/events', label: 'События', icon: Calendar, end: false },
+  { to: '/admin/news', label: 'Новости', icon: Newspaper, end: false },
+  { to: '/admin/forum', label: 'Форум', icon: Chat, end: false },
   { to: '/admin/database', label: 'База данных', icon: Lock, end: false },
 ]
 

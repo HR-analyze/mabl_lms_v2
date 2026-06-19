@@ -2,7 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import bcrypt from 'bcryptjs'
 import { getSql } from './_db.js'
 import { ensureSchema, initDatabase } from './_seed.js'
-import type { Course, User } from '../src/types'
+import { syncTelegramNews } from './_telegram.js'
+import type { Course, NewsItem, User } from '../src/types'
 
 // Mock-модули служат источником статического контента (только import type внутри —
 // при сборке зависимостей от @/ не остаётся). Расширения .js обязательны для ESM.
@@ -97,15 +98,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ---------- EVENTS (mock) ----------
     if (path === 'events' && method === 'GET') return res.json(events)
-    if (path === 'events/next' && method === 'GET') return res.json(getNextWebinar())
+    if (path === 'events/next' && method === 'GET') return res.json(getNextWebinar() ?? null)
     if (segments[0] === 'events' && segments.length === 2 && method === 'GET') {
       return found(res, events.find((e) => e.id === segments[1]), 'Событие не найдено')
     }
 
-    // ---------- NEWS (mock) ----------
-    if (path === 'news' && method === 'GET') return res.json(news)
-    if (segments[0] === 'news' && segments.length === 2 && method === 'GET') {
-      return found(res, news.find((n) => n.id === segments[1]), 'Новость не найдена')
+    // ---------- NEWS (БД + импорт из Telegram) ----------
+    // Синхронизация из Telegram-канала. GET — вызывается Vercel Cron,
+    // POST — кнопкой «Обновить из Telegram» в админ-панели.
+    if (path === 'news/sync' && (method === 'GET' || method === 'POST')) {
+      const sql = getSql()
+      const result = await syncTelegramNews(sql)
+      return res.json({ ok: true, ...result })
+    }
+    if (path === 'news' && method === 'GET') return res.json(await listNews())
+    if (path === 'news' && method === 'POST') return await createNews(req, res)
+    if (path === 'news/reset' && method === 'POST') {
+      const sql = getSql()
+      await sql`DELETE FROM news`
+      return res.json([])
+    }
+    if (segments[0] === 'news' && segments.length === 2) {
+      const id = segments[1]
+      if (method === 'GET') return found(res, await getNewsItem(id), 'Новость не найдена')
+      if (method === 'PUT') return await updateNews(id, req, res)
+      if (method === 'DELETE') return await deleteNews(id, res)
     }
 
     // ---------- MATERIALS (mock) ----------
@@ -291,6 +308,68 @@ async function resetCourses(res: VercelResponse) {
     `
   }
   return res.json(seedCourses)
+}
+
+// ---------------- news helpers ----------------
+
+async function listNews(): Promise<NewsItem[]> {
+  try {
+    const sql = getSql()
+    await ensureSchema(sql)
+    const rows = await sql`SELECT data FROM news ORDER BY published_at DESC NULLS LAST`
+    if (rows.length === 0) return news
+    return rows.map((r) => r.data as NewsItem)
+  } catch {
+    // Нет БД (например, локальный mock-режим) — отдаём статический список.
+    return news
+  }
+}
+
+async function getNewsItem(id: string): Promise<NewsItem | undefined> {
+  try {
+    const sql = getSql()
+    const rows = await sql`SELECT data FROM news WHERE id = ${id} LIMIT 1`
+    if (rows[0]) return rows[0].data as NewsItem
+  } catch {
+    /* fallthrough к статике */
+  }
+  return news.find((n) => n.id === id)
+}
+
+async function createNews(req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const body = parseBody(req) as Partial<NewsItem>
+  const desired = (body.id && String(body.id).trim()) || slugify(String(body.title ?? 'news'))
+  const taken = await sql`SELECT id FROM news`
+  const ids = new Set(taken.map((r) => r.id as string))
+  const id = uniqueId(desired, ids)
+  const item = { ...body, id } as NewsItem
+  await sql`
+    INSERT INTO news (id, data, published_at, source)
+    VALUES (${id}, ${JSON.stringify(item)}::jsonb, ${item.date ?? null}, 'manual')
+  `
+  return res.status(201).json(item)
+}
+
+async function updateNews(id: string, req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  const rows = await sql`SELECT data FROM news WHERE id = ${id} LIMIT 1`
+  if (!rows[0]) return res.status(404).json({ message: 'Новость не найдена' })
+  const patch = parseBody(req) as Partial<NewsItem>
+  const next = { ...(rows[0].data as NewsItem), ...patch, id } as NewsItem
+  await sql`
+    UPDATE news SET data = ${JSON.stringify(next)}::jsonb,
+      published_at = ${next.date ?? null}, updated_at = NOW()
+    WHERE id = ${id}
+  `
+  return res.json(next)
+}
+
+async function deleteNews(id: string, res: VercelResponse) {
+  const sql = getSql()
+  await sql`DELETE FROM news WHERE id = ${id}`
+  return res.status(204).end()
 }
 
 async function updateProfile(req: VercelRequest, res: VercelResponse) {

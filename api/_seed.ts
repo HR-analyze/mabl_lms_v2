@@ -50,6 +50,15 @@ export async function ensureSchema(sql: Sql): Promise<void> {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `
+  await sql`
+    CREATE TABLE IF NOT EXISTS news (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      published_at TIMESTAMPTZ,
+      source TEXT NOT NULL DEFAULT 'telegram',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `
 }
 
 /** Полная инициализация: схема + сиды курсов и аккаунтов (без перезаписи существующих). */
