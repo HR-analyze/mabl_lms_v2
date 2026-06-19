@@ -75,8 +75,11 @@ function parsePosts(html: string): RawPost[] {
     if (!idMatch) continue
     const messageId = idMatch[1]
 
+    // Текст поста лежит в .tgme_widget_message_text и не содержит вложенных
+    // <div>, поэтому берём содержимое до первого </div>. Это важно: иначе
+    // в текст затягивался блок реакций из футера поста.
     const textMatch = block.match(
-      /<div class="tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>\s*(?:<div class="tgme_widget_message_(?:footer|reply_markup|info)|<\/div>)/,
+      /<div class="tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/,
     )
     const rawText = textMatch ? textMatch[1] : ''
 

@@ -3,9 +3,10 @@ import { Container } from '@/components/ui/Section'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Crest } from '@/components/brand/Crest'
+import { Carousel } from '@/components/ui/Carousel'
 import { api } from '@/api'
 import { useAsync } from '@/hooks/useAsync'
-import { formatDate, cn } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 
 export default function NewsDetailPage() {
   const { id = '' } = useParams()
@@ -42,28 +43,15 @@ export default function NewsDetailPage() {
           <h1 className="mt-3 font-serif text-4xl leading-tight text-neft">{item.title}</h1>
         </div>
 
-        {gallery.length > 0 ? (
-          <div
-            className={cn(
-              'my-10 grid gap-3',
-              gallery.length > 1 && 'sm:grid-cols-2',
-            )}
-          >
-            {gallery.map((src, i) => (
-              <img
-                key={i}
-                src={src}
-                alt=""
-                loading={i === 0 ? undefined : 'lazy'}
-                className={cn(
-                  'w-full rounded-card bg-ink-5 object-cover',
-                  // Одиночное фото — в естественных пропорциях, без обрезки.
-                  gallery.length === 1
-                    ? 'max-h-[32rem] object-contain'
-                    : 'aspect-[4/3]',
-                )}
-              />
-            ))}
+        {gallery.length > 1 ? (
+          <Carousel images={gallery} className="my-10" />
+        ) : gallery.length === 1 ? (
+          <div className="my-10 flex justify-center overflow-hidden rounded-card bg-neft">
+            <img
+              src={gallery[0]}
+              alt=""
+              className="max-h-[32rem] w-full object-contain"
+            />
           </div>
         ) : (
           <div className="relative my-10 flex h-56 items-center justify-center overflow-hidden rounded-card bg-neft md:h-80">
