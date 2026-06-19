@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Crest } from '@/components/brand/Crest'
 import { Carousel } from '@/components/ui/Carousel'
+import { NewsEngagement } from '@/components/news/NewsEngagement'
 import { api } from '@/api'
 import { useAsync } from '@/hooks/useAsync'
 import { formatDate } from '@/lib/utils'
@@ -65,6 +66,8 @@ export default function NewsDetailPage() {
             <p key={i}>{p}</p>
           ))}
         </div>
+
+        <NewsEngagement newsId={item.id} />
 
         {related.length > 0 && (
           <div className="mt-16 border-t border-ink-10 pt-10">

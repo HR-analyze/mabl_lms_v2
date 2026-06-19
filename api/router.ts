@@ -118,6 +118,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await sql`DELETE FROM news`
       return res.json([])
     }
+    // Комментарии и реакции к новости.
+    if (segments[0] === 'news' && segments.length >= 3) {
+      const newsId = segments[1]
+      const sub = segments[2]
+      if (sub === 'comments') {
+        if (segments.length === 3 && method === 'GET') return res.json(await listComments(newsId))
+        if (segments.length === 3 && method === 'POST') return await createComment(newsId, req, res)
+        if (segments.length === 4 && method === 'DELETE')
+          return await deleteComment(newsId, segments[3], req, res)
+      }
+      if (sub === 'reactions') {
+        const userId = typeof req.query.userId === 'string' ? req.query.userId : ''
+        if (method === 'GET') return res.json(await getReactions(newsId, userId))
+        if (method === 'POST') return await toggleReaction(newsId, req, res)
+      }
+    }
     if (segments[0] === 'news' && segments.length === 2) {
       const id = segments[1]
       if (method === 'GET') return found(res, await getNewsItem(id), 'Новость не найдена')
@@ -370,6 +386,104 @@ async function deleteNews(id: string, res: VercelResponse) {
   const sql = getSql()
   await sql`DELETE FROM news WHERE id = ${id}`
   return res.status(204).end()
+}
+
+// ---------------- news comments & reactions ----------------
+
+function toComment(r: Record<string, unknown>) {
+  return {
+    id: r.id as string,
+    newsId: r.news_id as string,
+    userId: (r.user_id as string | null) ?? null,
+    author: r.author as string,
+    body: r.body as string,
+    createdAt: r.created_at as string,
+  }
+}
+
+async function listComments(newsId: string) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const rows = await sql`
+    SELECT id, news_id, user_id, author, body, created_at
+    FROM news_comments WHERE news_id = ${newsId} ORDER BY created_at ASC
+  `
+  return rows.map(toComment)
+}
+
+async function createComment(newsId: string, req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const b = parseBody(req)
+  const author = (String(b.author ?? '').trim() || 'Участник').slice(0, 120)
+  const body = String(b.body ?? '').trim()
+  const userId = b.userId ? String(b.userId) : null
+  if (!body) return res.status(400).json({ message: 'Комментарий не может быть пустым.' })
+  if (body.length > 2000) return res.status(400).json({ message: 'Слишком длинный комментарий (макс. 2000 символов).' })
+  const id = `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+  const rows = await sql`
+    INSERT INTO news_comments (id, news_id, user_id, author, body)
+    VALUES (${id}, ${newsId}, ${userId}, ${author}, ${body})
+    RETURNING id, news_id, user_id, author, body, created_at
+  `
+  return res.status(201).json(toComment(rows[0]))
+}
+
+async function deleteComment(
+  newsId: string,
+  commentId: string,
+  req: VercelRequest,
+  res: VercelResponse,
+) {
+  const sql = getSql()
+  const rows = await sql`SELECT user_id FROM news_comments WHERE id = ${commentId} AND news_id = ${newsId} LIMIT 1`
+  if (!rows[0]) return res.status(404).json({ message: 'Комментарий не найден' })
+  const userId = typeof req.query.userId === 'string' ? req.query.userId : ''
+  const isOwner = Boolean(rows[0].user_id) && rows[0].user_id === userId
+  let isAdmin = false
+  if (userId) {
+    const u = await sql`SELECT kind FROM users WHERE id = ${userId} LIMIT 1`
+    isAdmin = u[0]?.kind === 'admin'
+  }
+  if (!isOwner && !isAdmin) return res.status(403).json({ message: 'Нет прав на удаление комментария.' })
+  await sql`DELETE FROM news_comments WHERE id = ${commentId}`
+  return res.status(204).end()
+}
+
+async function getReactions(newsId: string, userId: string) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const counts = await sql`
+    SELECT emoji, COUNT(*)::int AS n FROM news_reactions WHERE news_id = ${newsId} GROUP BY emoji
+  `
+  const mine = userId
+    ? await sql`SELECT emoji FROM news_reactions WHERE news_id = ${newsId} AND user_id = ${userId}`
+    : []
+  const countsObj: Record<string, number> = {}
+  for (const r of counts) countsObj[r.emoji as string] = Number(r.n)
+  return { counts: countsObj, mine: mine.map((r) => r.emoji as string) }
+}
+
+async function toggleReaction(newsId: string, req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const b = parseBody(req)
+  const userId = b.userId ? String(b.userId) : ''
+  const emoji = String(b.emoji ?? '').trim()
+  if (!userId) return res.status(401).json({ message: 'Войдите, чтобы поставить реакцию.' })
+  if (!emoji || emoji.length > 16) return res.status(400).json({ message: 'Некорректная реакция.' })
+  const existing = await sql`
+    SELECT 1 FROM news_reactions WHERE news_id = ${newsId} AND user_id = ${userId} AND emoji = ${emoji} LIMIT 1
+  `
+  if (existing[0]) {
+    await sql`DELETE FROM news_reactions WHERE news_id = ${newsId} AND user_id = ${userId} AND emoji = ${emoji}`
+  } else {
+    await sql`
+      INSERT INTO news_reactions (news_id, user_id, emoji) VALUES (${newsId}, ${userId}, ${emoji})
+      ON CONFLICT DO NOTHING
+    `
+  }
+  return res.json(await getReactions(newsId, userId))
 }
 
 async function updateProfile(req: VercelRequest, res: VercelResponse) {

@@ -59,6 +59,27 @@ export async function ensureSchema(sql: Sql): Promise<void> {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `
+  await sql`
+    CREATE TABLE IF NOT EXISTS news_comments (
+      id TEXT PRIMARY KEY,
+      news_id TEXT NOT NULL,
+      user_id TEXT,
+      author TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS idx_news_comments_news ON news_comments (news_id, created_at)`
+  await sql`
+    CREATE TABLE IF NOT EXISTS news_reactions (
+      news_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (news_id, user_id, emoji)
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS idx_news_reactions_news ON news_reactions (news_id)`
 }
 
 /** Полная инициализация: схема + сиды курсов и аккаунтов (без перезаписи существующих). */
