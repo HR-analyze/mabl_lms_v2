@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Crest } from '@/components/brand/Crest'
 import { api } from '@/api'
 import { useAsync } from '@/hooks/useAsync'
-import { formatDate } from '@/lib/utils'
+import { formatDate, cn } from '@/lib/utils'
 
 export default function NewsDetailPage() {
   const { id = '' } = useParams()
@@ -27,6 +27,7 @@ export default function NewsDetailPage() {
   }
 
   const related = news.filter((n) => n.id !== item.id && n.category === item.category).slice(0, 2)
+  const gallery = item.images?.length ? item.images : item.cover ? [item.cover] : []
 
   return (
     <article className="py-14 md:py-20">
@@ -41,20 +42,35 @@ export default function NewsDetailPage() {
           <h1 className="mt-3 font-serif text-4xl leading-tight text-neft">{item.title}</h1>
         </div>
 
-        <div className="relative my-10 flex h-56 items-center justify-center overflow-hidden rounded-card bg-neft md:h-80">
-          {item.cover ? (
-            <img
-              src={item.cover}
-              alt=""
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-          ) : (
-            <>
-              <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
-              <Crest className="relative h-24 w-24" onDark />
-            </>
-          )}
-        </div>
+        {gallery.length > 0 ? (
+          <div
+            className={cn(
+              'my-10 grid gap-3',
+              gallery.length > 1 && 'sm:grid-cols-2',
+            )}
+          >
+            {gallery.map((src, i) => (
+              <img
+                key={i}
+                src={src}
+                alt=""
+                loading={i === 0 ? undefined : 'lazy'}
+                className={cn(
+                  'w-full rounded-card bg-ink-5 object-cover',
+                  // Одиночное фото — в естественных пропорциях, без обрезки.
+                  gallery.length === 1
+                    ? 'max-h-[32rem] object-contain'
+                    : 'aspect-[4/3]',
+                )}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="relative my-10 flex h-56 items-center justify-center overflow-hidden rounded-card bg-neft md:h-80">
+            <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
+            <Crest className="relative h-24 w-24" onDark />
+          </div>
+        )}
 
         <div className="space-y-5 text-lg leading-relaxed text-ink-80">
           {item.body.map((p, i) => (

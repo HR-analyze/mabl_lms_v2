@@ -50,6 +50,8 @@ export interface NewsItem {
   date: string // ISO
   readingTime: string
   cover?: string
+  /** Все изображения публикации (для альбомов из Telegram). cover — первое из них. */
+  images?: string[]
 }
 
 export type MaterialType = 'PDF' | 'Шаблон' | 'Презентация' | 'Чек-лист' | 'Видео'
