@@ -10,6 +10,7 @@ import { forumApi } from './forum'
 import { notificationsApi } from './notifications'
 import { scormApi } from './scorm'
 import { databaseApi } from './database'
+import { paymentsApi } from './payments'
 
 /**
  * Единая точка доступа к данным приложения.
@@ -31,6 +32,7 @@ export const api = {
   notifications: notificationsApi,
   scorm: scormApi,
   database: databaseApi,
+  payments: paymentsApi,
 }
 
 export { USE_MOCK, API_URL, ApiError } from './config'

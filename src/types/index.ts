@@ -200,4 +200,10 @@ export interface Order {
   date: string
   status: OrderStatus
   method: PaymentMethod
+  /** E-mail покупателя (для онлайн-оплаты и чека). */
+  email?: string
+  /** Идентификатор платежа во внешнем шлюзе (ЮKassa). */
+  paymentId?: string
+  /** Платёжный провайдер, через который оформлен заказ. */
+  provider?: string
 }

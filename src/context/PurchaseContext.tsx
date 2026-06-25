@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { mockPaymentProvider } from '@/lib/payments'
+import { getActivePaymentProvider } from '@/lib/payments'
 import type { PaymentIntent, PaymentResult, PaymentProvider } from '@/lib/payments'
+
+const paymentProvider = getActivePaymentProvider()
 
 /**
  * Управление доступом: купленные курсы и записи на события.
@@ -20,6 +22,8 @@ interface PurchaseContextValue {
   registeredEventIds: string[]
   isOwned: (courseId: string) => boolean
   isRegistered: (eventId: string) => boolean
+  /** Выдать доступ к курсу (после подтверждённой оплаты на возврате/webhook). */
+  grantCourseAccess: (courseId: string) => void
   /** Провести оплату курса и открыть доступ */
   purchaseCourse: (intent: PaymentIntent) => Promise<PaymentResult>
   /** Записаться на событие (с оплатой, если платное) */
@@ -50,17 +54,23 @@ export function PurchaseProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(EVENTS_KEY, JSON.stringify(registeredEventIds))
   }, [registeredEventIds])
 
+  const grantCourseAccess = (courseId: string) => {
+    setOwned((prev) => (prev.includes(courseId) ? prev : [...prev, courseId]))
+  }
+
   const purchaseCourse = async (intent: PaymentIntent): Promise<PaymentResult> => {
-    const result = await mockPaymentProvider.pay(intent)
+    const result = await paymentProvider.pay(intent)
+    // Для redirect-провайдеров (ЮKassa) доступ выдаётся на возврате/по webhook,
+    // а не оптимистично здесь — браузер уже уходит на платёжную форму.
     if (result.status === 'succeeded') {
-      setOwned((prev) => (prev.includes(intent.itemId) ? prev : [...prev, intent.itemId]))
+      grantCourseAccess(intent.itemId)
     }
     return result
   }
 
   const registerEvent = async (eventId: string, intent?: PaymentIntent) => {
     if (intent && intent.amount > 0) {
-      const result = await mockPaymentProvider.pay(intent)
+      const result = await paymentProvider.pay(intent)
       if (result.status === 'succeeded') {
         setRegistered((prev) => (prev.includes(eventId) ? prev : [...prev, eventId]))
       }
@@ -75,9 +85,10 @@ export function PurchaseProvider({ children }: { children: ReactNode }) {
       registeredEventIds,
       isOwned: (id) => ownedCourseIds.includes(id),
       isRegistered: (id) => registeredEventIds.includes(id),
+      grantCourseAccess,
       purchaseCourse,
       registerEvent,
-      paymentProvider: mockPaymentProvider,
+      paymentProvider,
     }),
     [ownedCourseIds, registeredEventIds],
   )

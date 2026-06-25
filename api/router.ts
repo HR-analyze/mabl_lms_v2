@@ -3,7 +3,8 @@ import bcrypt from 'bcryptjs'
 import { getSql } from './_db.js'
 import { ensureSchema, initDatabase } from './_seed.js'
 import { syncTelegramNews } from './_telegram.js'
-import type { AdminUser, Course, NewsItem, Order, User } from '../src/types'
+import { isYooKassaConfigured, createPayment, getPayment } from './_yookassa.js'
+import type { AdminUser, Course, NewsItem, Order, OrderStatus, User } from '../src/types'
 
 // Mock-модули служат источником статического контента (только import type внутри —
 // при сборке зависимостей от @/ не остаётся). Расширения .js обязательны для ESM.
@@ -212,6 +213,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (method === 'GET') return found(res, await getParticipant(id), 'Участник не найден')
       if (method === 'PUT') return await updateParticipant(id, req, res)
       if (method === 'DELETE') return await deleteParticipant(id, res)
+    }
+
+    // ---------- ПЛАТЕЖИ (ЮKassa) ----------
+    // Боевая оплата. «Спит», пока не заданы YOOKASSA_SHOP_ID / YOOKASSA_SECRET_KEY.
+    if (path === 'payments/config' && method === 'GET') {
+      return res.json({ provider: 'yookassa', configured: isYooKassaConfigured() })
+    }
+    if (path === 'payments/create' && method === 'POST') {
+      return await createCoursePayment(req, res)
+    }
+    if (path === 'payments/webhook' && method === 'POST') {
+      return await handlePaymentWebhook(req, res)
+    }
+    if (segments[0] === 'payments' && segments[1] === 'by-order' && segments.length === 3 && method === 'GET') {
+      return await getOrderPaymentStatus(segments[2], res)
+    }
+    if (segments[0] === 'payments' && segments.length === 2 && method === 'GET') {
+      return await getPaymentStatus(segments[1], res)
     }
 
     // ---------- ADMIN · ЗАКАЗЫ (БД) ----------
@@ -670,6 +689,158 @@ async function resetOrders(res: VercelResponse) {
     `
   }
   return res.json(orders)
+}
+
+// ---------------- payments (ЮKassa) ----------------
+
+/** Базовый URL сайта для return_url (из заголовков запроса или env). */
+function siteOrigin(req: VercelRequest): string {
+  if (process.env.YOOKASSA_RETURN_URL) return process.env.YOOKASSA_RETURN_URL.replace(/\/$/, '')
+  const proto = (req.headers['x-forwarded-proto'] as string) || 'https'
+  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost'
+  return `${proto}://${host}`
+}
+
+/**
+ * POST /api/payments/create
+ * Тело: { courseId, email, userId? }
+ * Создаёт платёж в ЮKassa, заводит заказ со статусом pending и возвращает
+ * ссылку на платёжную форму. Цена берётся из БД — клиент её не диктует.
+ */
+async function createCoursePayment(req: VercelRequest, res: VercelResponse) {
+  if (!isYooKassaConfigured()) {
+    return res.status(503).json({ message: 'Онлайн-оплата временно недоступна.' })
+  }
+  const { courseId, email, userId } = parseBody(req)
+  const course = await getCourse(String(courseId ?? ''))
+  if (!course) return res.status(404).json({ message: 'Программа не найдена' })
+  if (!course.price || course.price <= 0) {
+    return res.status(400).json({ message: 'У программы не задана цена.' })
+  }
+
+  const sql = getSql()
+  await ensureSchema(sql)
+
+  // Заводим заказ заранее (pending), чтобы webhook мог его найти.
+  const taken = await sql`SELECT id FROM orders`
+  const ids = new Set(taken.map((r) => r.id as string))
+  let maxNum = 1042
+  for (const existing of ids) {
+    const n = Number(String(existing).replace(/\D/g, ''))
+    if (Number.isFinite(n) && n > maxNum) maxNum = n
+  }
+  const orderId = uniqueId(`ORD-${maxNum + 1}`, ids)
+
+  const payment = await createPayment({
+    amount: course.price,
+    currency: 'RUB',
+    description: `Доступ к программе «${course.title}» (${orderId})`,
+    returnUrl: `${siteOrigin(req)}/checkout?course=${course.id}&order=${orderId}`,
+    metadata: { orderId, courseId: course.id, userId: String(userId ?? '') },
+    idempotenceKey: orderId,
+    receiptEmail: email ? String(email) : undefined,
+  })
+
+  const order: Order = {
+    id: orderId,
+    userId: String(userId ?? ''),
+    courseId: course.id,
+    amount: course.price,
+    date: new Date().toISOString().slice(0, 10),
+    status: 'pending',
+    method: 'Карта',
+    email: email ? String(email) : undefined,
+    paymentId: payment.id,
+    provider: 'yookassa',
+  }
+  const [{ min }] = await sql`SELECT COALESCE(MIN(sort_order), 0) - 1 AS min FROM orders`
+  await sql`
+    INSERT INTO orders (id, data, sort_order)
+    VALUES (${orderId}, ${JSON.stringify(order)}::jsonb, ${Number(min)})
+  `
+
+  const confirmationUrl = payment.confirmation?.confirmation_url
+  if (!confirmationUrl) {
+    return res.status(502).json({ message: 'ЮKassa не вернула ссылку на оплату.' })
+  }
+  return res.status(201).json({ orderId, paymentId: payment.id, confirmationUrl })
+}
+
+/** Применить актуальный статус платежа ЮKassa к заказу в БД. */
+async function applyPaymentStatus(payment: { id: string; status: string; metadata?: Record<string, string> }) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const orderId = payment.metadata?.orderId
+  const rows = orderId
+    ? await sql`SELECT data FROM orders WHERE id = ${orderId} LIMIT 1`
+    : await sql`SELECT data FROM orders WHERE data->>'paymentId' = ${payment.id} LIMIT 1`
+  if (!rows[0]) return null
+  const order = rows[0].data as Order
+  const nextStatus: OrderStatus =
+    payment.status === 'succeeded'
+      ? 'paid'
+      : payment.status === 'canceled'
+        ? 'refunded'
+        : 'pending'
+  if (order.status === nextStatus) return order
+  const next: Order = { ...order, status: nextStatus }
+  await sql`UPDATE orders SET data = ${JSON.stringify(next)}::jsonb, updated_at = NOW() WHERE id = ${order.id}`
+  return next
+}
+
+/**
+ * POST /api/payments/webhook
+ * Уведомление от ЮKassa. Доверяем не телу, а перезапрашиваем платёж по id
+ * (защита от подделки) и проставляем статус заказа.
+ */
+async function handlePaymentWebhook(req: VercelRequest, res: VercelResponse) {
+  if (!isYooKassaConfigured()) return res.status(503).json({ message: 'not configured' })
+  try {
+    const body = parseBody(req) as { object?: { id?: string } }
+    const paymentId = body.object?.id
+    if (!paymentId) return res.status(400).json({ message: 'no payment id' })
+    const payment = await getPayment(String(paymentId))
+    await applyPaymentStatus(payment)
+  } catch (err) {
+    console.error('[payments] webhook error:', err)
+    // Возвращаем 200, чтобы ЮKassa не зациклила ретраи на нашей ошибке БД.
+  }
+  return res.status(200).json({ ok: true })
+}
+
+/**
+ * GET /api/payments/:id
+ * Используется на странице возврата, чтобы показать актуальный статус, не
+ * дожидаясь webhook.
+ */
+async function getPaymentStatus(id: string, res: VercelResponse) {
+  if (!isYooKassaConfigured()) return res.status(503).json({ message: 'Онлайн-оплата недоступна.' })
+  const payment = await getPayment(id)
+  const order = await applyPaymentStatus(payment)
+  return res.json({ paymentId: payment.id, status: payment.status, paid: payment.status === 'succeeded', orderId: order?.id })
+}
+
+/**
+ * GET /api/payments/by-order/:orderId
+ * Возврат после оплаты: по номеру заказа находим платёж, перезапрашиваем его
+ * статус в ЮKassa и отдаём актуальное состояние (не дожидаясь webhook).
+ */
+async function getOrderPaymentStatus(orderId: string, res: VercelResponse) {
+  const sql = getSql()
+  const rows = await sql`SELECT data FROM orders WHERE id = ${orderId} LIMIT 1`
+  if (!rows[0]) return res.status(404).json({ message: 'Заказ не найден' })
+  const order = rows[0].data as Order
+  if (!order.paymentId || !isYooKassaConfigured()) {
+    return res.json({ orderId, status: order.status, paid: order.status === 'paid' })
+  }
+  const payment = await getPayment(order.paymentId)
+  const updated = await applyPaymentStatus(payment)
+  return res.json({
+    orderId,
+    status: (updated ?? order).status,
+    paid: (updated ?? order).status === 'paid',
+    courseId: order.courseId,
+  })
 }
 
 async function updateProfile(req: VercelRequest, res: VercelResponse) {

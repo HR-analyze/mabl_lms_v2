@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { api } from '@/api'
 import { Container } from '@/components/ui/Section'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -16,10 +17,13 @@ import { courseFormatLabel } from '@/lib/labels'
 export default function CheckoutPage() {
   const [params] = useSearchParams()
   const courseId = params.get('course') || ''
+  const returnOrderId = params.get('order') || ''
   const { getCourseById } = useCourses()
   const course = getCourseById(courseId)
-  const { purchaseCourse, isOwned, paymentProvider } = usePurchases()
+  const { purchaseCourse, isOwned, grantCourseAccess, paymentProvider } = usePurchases()
   const { user } = useAuth()
+
+  const isRedirectProvider = paymentProvider.name === 'ЮKassa'
 
   const [email, setEmail] = useState(user?.email || '')
   const [name, setName] = useState(user?.name || '')
@@ -28,8 +32,36 @@ export default function CheckoutPage() {
   const [done, setDone] = useState(false)
   const [txId, setTxId] = useState('')
   const [error, setError] = useState('')
+  // Состояние возврата с платёжной формы ЮKassa.
+  const [returnState, setReturnState] = useState<'idle' | 'checking' | 'pending' | 'done'>(
+    returnOrderId ? 'checking' : 'idle',
+  )
 
   const alreadyOwned = useMemo(() => (course ? isOwned(course.id) : false), [course, isOwned])
+
+  // Возврат с ЮKassa: подтверждаем оплату по номеру заказа.
+  useEffect(() => {
+    if (!returnOrderId) return
+    let active = true
+    setReturnState('checking')
+    api.payments
+      .statusByOrder(returnOrderId)
+      .then((res) => {
+        if (!active) return
+        if (res.paid) {
+          if (res.courseId) grantCourseAccess(res.courseId)
+          else if (course) grantCourseAccess(course.id)
+          setReturnState('done')
+          setDone(true)
+        } else {
+          setReturnState('pending')
+        }
+      })
+      .catch(() => active && setReturnState('pending'))
+    return () => {
+      active = false
+    }
+  }, [returnOrderId, course, grantCourseAccess])
 
   if (!course) {
     return (
@@ -52,10 +84,14 @@ export default function CheckoutPage() {
         amount: course.price,
         currency: 'RUB',
         customerEmail: email,
+        customerId: user?.id,
       })
       if (result.status === 'succeeded') {
         setTxId(result.transactionId)
         setDone(true)
+      } else if (result.status === 'redirect') {
+        // Браузер уходит на платёжную форму ЮKassa — оставляем индикатор.
+        return
       } else {
         setError(result.message)
       }
@@ -64,6 +100,30 @@ export default function CheckoutPage() {
     } finally {
       setProcessing(false)
     }
+  }
+
+  // Экран возврата с ЮKassa, пока статус оплаты не подтверждён.
+  if ((returnState === 'checking' || returnState === 'pending') && !alreadyOwned) {
+    return (
+      <Container className="py-20 md:py-28">
+        <div className="mx-auto max-w-lg rounded-card border border-ink-10 bg-wisdom p-10 text-center">
+          <h1 className="font-serif text-3xl text-neft">
+            {returnState === 'checking' ? 'Проверяем оплату…' : 'Платёж обрабатывается'}
+          </h1>
+          <p className="mt-3 text-ink-60">
+            {returnState === 'checking'
+              ? 'Подтверждаем статус платежа в ЮKassa. Это займёт несколько секунд.'
+              : 'Платёж ещё не подтверждён. Если средства списаны, доступ откроется автоматически в течение нескольких минут.'}
+          </p>
+          {returnState === 'pending' && (
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <Button onClick={() => window.location.reload()}>Проверить ещё раз</Button>
+              <Button to="/dashboard" variant="secondary">В личный кабинет</Button>
+            </div>
+          )}
+        </div>
+      </Container>
+    )
   }
 
   // Экран успеха
@@ -104,25 +164,30 @@ export default function CheckoutPage() {
           <p className="eyebrow mb-3">Оформление доступа</p>
           <h1 className="font-serif text-3xl text-neft">Оплата курса</h1>
           <p className="mt-3 max-w-md text-ink-60">
-            Демо-режим оплаты. Реальные платежи подключаются через провайдера
-            ({paymentProvider.name} → ЮKassa / Stripe) без изменения интерфейса.
+            {isRedirectProvider
+              ? 'Оплата проходит на защищённой странице ЮKassa. После подтверждения доступ к программе откроется автоматически.'
+              : `Демо-режим оплаты. Реальные платежи подключаются через провайдера (${paymentProvider.name} → ЮKassa) без изменения интерфейса.`}
           </p>
 
           <form onSubmit={submit} className="mt-8 space-y-5">
             <Input label="Имя и фамилия" value={name} onChange={(e) => setName(e.target.value)} required placeholder="Александр Орлов" />
             <Input label="E-mail для доступа" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="you@company.com" />
-            <Input
-              label="Номер карты"
-              value={card}
-              onChange={(e) => setCard(e.target.value)}
-              placeholder="0000 0000 0000 0000"
-              hint="Демо-поле: данные не передаются и не сохраняются."
-              inputMode="numeric"
-            />
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Срок" placeholder="ММ / ГГ" />
-              <Input label="CVC" placeholder="•••" />
-            </div>
+            {!isRedirectProvider && (
+              <>
+                <Input
+                  label="Номер карты"
+                  value={card}
+                  onChange={(e) => setCard(e.target.value)}
+                  placeholder="0000 0000 0000 0000"
+                  hint="Демо-поле: данные не передаются и не сохраняются."
+                  inputMode="numeric"
+                />
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label="Срок" placeholder="ММ / ГГ" />
+                  <Input label="CVC" placeholder="•••" />
+                </div>
+              </>
+            )}
 
             {error && (
               <div className="rounded-token border border-ocean/40 bg-oceanc-10 px-4 py-3 text-sm text-ocean">
@@ -132,7 +197,13 @@ export default function CheckoutPage() {
 
             <Button type="submit" size="lg" fullWidth disabled={processing}>
               <Lock width={16} height={16} />
-              {processing ? 'Проводим оплату…' : `Оплатить ${formatPrice(course.price)}`}
+              {processing
+                ? isRedirectProvider
+                  ? 'Переходим к оплате…'
+                  : 'Проводим оплату…'
+                : isRedirectProvider
+                  ? `Перейти к оплате · ${formatPrice(course.price)}`
+                  : `Оплатить ${formatPrice(course.price)}`}
             </Button>
             <p className="text-center text-[0.72rem] text-ink-40">
               Нажимая «Оплатить», вы принимаете <Link to="/offer" className="underline hover:text-ink-80">публичную оферту</Link>, <Link to="/privacy" className="underline hover:text-ink-80">политику конфиденциальности</Link> и даёте <Link to="/consent-personal-data" className="underline hover:text-ink-80">согласие на обработку персональных данных</Link> МАБЛ.
