@@ -11,7 +11,7 @@ import { Check, Lock } from '@/components/ui/Icon'
 import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
 import { useAuth } from '@/context/AuthContext'
-import { formatPrice } from '@/lib/utils'
+import { formatPrice, formatDuration } from '@/lib/utils'
 import { courseFormatLabel } from '@/lib/labels'
 
 export default function CheckoutPage() {
@@ -229,7 +229,7 @@ export default function CheckoutPage() {
               </div>
               <dl className="space-y-2 text-sm">
                 <div className="flex justify-between"><dt className="text-ink-60">Преподаватель</dt><dd className="text-neft">{course.instructor}</dd></div>
-                <div className="flex justify-between"><dt className="text-ink-60">Объём</dt><dd className="text-neft">{course.durationHours} ч · {course.lessonsCount} уроков</dd></div>
+                <div className="flex justify-between"><dt className="text-ink-60">Объём</dt><dd className="text-neft">{formatDuration(course.durationHours)} · {course.lessonsCount} уроков</dd></div>
               </dl>
               <div className="flex items-center justify-between border-t border-ink-10 pt-4">
                 <span className="text-sm uppercase tracking-wide text-ink-60">Итого</span>
