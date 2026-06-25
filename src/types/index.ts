@@ -1,5 +1,66 @@
 // Доменные типы LMS МАБЛ
 
+/** Ключевой факт о программе (в шапке лендинга): «Продолжительность» → «12 месяцев». */
+export interface ProgramFact {
+  label: string
+  value: string
+}
+
+/** Учебный блок/модуль программы (раскрывается в структуре). */
+export interface ProgramModule {
+  /** Группировка верхнего уровня, например «Месяц 1 · Digital HR Mindset». */
+  phase?: string
+  title: string
+  topics: string[]
+  /** Подпись к итогу блока: «Результат», «Практика», «Проект». */
+  resultLabel?: string
+  result?: string
+}
+
+/** Сквозной трек, проходящий через все модули. */
+export interface ProgramTrack {
+  title: string
+  items: string[]
+}
+
+/** Итоговый проект / Capstone. */
+export interface ProgramCapstone {
+  title: string
+  intro?: string
+  items: string[]
+}
+
+/** Образовательная программа (длинный маркетинговый лендинг в стиле Executive MBA). */
+export interface Program {
+  id: string
+  /** Надзаголовок-категория: «Executive MBA», «Программа цифровой трансформации». */
+  category: string
+  title: string
+  subtitle?: string
+  /** Краткое описание в шапке. */
+  tagline: string
+  durationLabel: string
+  facts: ProgramFact[]
+  /** Документ об окончании. */
+  document?: string
+  outcomesTitle?: string
+  outcomesIntro?: string
+  outcomes: string[]
+  /** Краткое резюме профиля выпускника. */
+  profileSummary?: string
+  competencies?: string[]
+  careers?: string[]
+  businessEffect?: string[]
+  businessEffectConclusion?: string
+  structureTitle?: string
+  structureSubtitle?: string
+  modules: ProgramModule[]
+  tracks?: ProgramTrack[]
+  capstone?: ProgramCapstone
+  /** Международный модуль (город/тема). */
+  international?: string
+}
+
 export type CourseFormat = 'scorm' | 'video' | 'longread'
 
 export type CourseLevel = 'Базовый' | 'Продвинутый' | 'Экспертный'
@@ -200,4 +261,10 @@ export interface Order {
   date: string
   status: OrderStatus
   method: PaymentMethod
+  /** E-mail покупателя (для онлайн-оплаты и чека). */
+  email?: string
+  /** Идентификатор платежа во внешнем шлюзе (ЮKassa). */
+  paymentId?: string
+  /** Платёжный провайдер, через который оформлен заказ. */
+  provider?: string
 }

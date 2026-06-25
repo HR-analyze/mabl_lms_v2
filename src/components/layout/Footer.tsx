@@ -5,6 +5,7 @@ const columns = [
   {
     title: 'Обучение',
     links: [
+      { to: '/programs', label: 'Программы' },
       { to: '/courses', label: 'Каталог курсов' },
       { to: '/calendar', label: 'Вебинары' },
       { to: '/materials', label: 'Материалы' },
