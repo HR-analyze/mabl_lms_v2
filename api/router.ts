@@ -3,7 +3,8 @@ import bcrypt from 'bcryptjs'
 import { getSql } from './_db.js'
 import { ensureSchema, initDatabase } from './_seed.js'
 import { syncTelegramNews } from './_telegram.js'
-import type { Course, NewsItem, User } from '../src/types'
+import { isYooKassaConfigured, createPayment, getPayment } from './_yookassa.js'
+import type { AdminUser, Course, NewsItem, Order, OrderStatus, User } from '../src/types'
 
 // Mock-модули служат источником статического контента (только import type внутри —
 // при сборке зависимостей от @/ не остаётся). Расширения .js обязательны для ESM.
@@ -118,6 +119,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await sql`DELETE FROM news`
       return res.json([])
     }
+    // Комментарии и реакции к новости.
+    if (segments[0] === 'news' && segments.length >= 3) {
+      const newsId = segments[1]
+      const sub = segments[2]
+      if (sub === 'comments') {
+        if (segments.length === 3 && method === 'GET') return res.json(await listComments(newsId))
+        if (segments.length === 3 && method === 'POST') return await createComment(newsId, req, res)
+        if (segments.length === 4 && method === 'DELETE')
+          return await deleteComment(newsId, segments[3], req, res)
+      }
+      if (sub === 'reactions') {
+        const userId = typeof req.query.userId === 'string' ? req.query.userId : ''
+        if (method === 'GET') return res.json(await getReactions(newsId, userId))
+        if (method === 'POST') return await toggleReaction(newsId, req, res)
+      }
+    }
     if (segments[0] === 'news' && segments.length === 2) {
       const id = segments[1]
       if (method === 'GET') return found(res, await getNewsItem(id), 'Новость не найдена')
@@ -176,23 +193,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (method === 'DELETE') return await deleteDbUser(id, res)
     }
 
-    // ---------- ADMIN (mock) ----------
-    if (path === 'admin/orders' && method === 'GET') return res.json(orders)
-    if (path === 'admin/users' && method === 'GET') return res.json(adminUsers)
     if (path === 'admin/scorm' && method === 'GET') return res.json([])
-    if (segments[0] === 'admin' && segments[1] === 'users' && segments.length === 3 && method === 'GET') {
-      return found(res, adminUsers.find((u) => u.id === segments[2]), 'Участник не найден')
-    }
+
+    // ---------- ADMIN · УЧАСТНИКИ (БД) ----------
+    if (path === 'admin/users' && method === 'GET') return res.json(await listParticipants())
+    if (path === 'admin/users' && method === 'POST') return await createParticipant(req, res)
+    if (path === 'admin/users/reset' && method === 'POST') return await resetParticipants(res)
     if (
       segments[0] === 'admin' &&
       segments[1] === 'users' &&
       segments[3] === 'status' &&
       method === 'PATCH'
     ) {
-      const user = adminUsers.find((u) => u.id === segments[2])
-      if (!user) return res.status(404).json({ message: 'Участник не найден' })
       const { status } = parseBody(req)
-      return res.json({ ...user, status })
+      return await setParticipantStatus(segments[2], String(status ?? ''), res)
+    }
+    if (segments[0] === 'admin' && segments[1] === 'users' && segments.length === 3) {
+      const id = segments[2]
+      if (method === 'GET') return found(res, await getParticipant(id), 'Участник не найден')
+      if (method === 'PUT') return await updateParticipant(id, req, res)
+      if (method === 'DELETE') return await deleteParticipant(id, res)
+    }
+
+    // ---------- ПЛАТЕЖИ (ЮKassa) ----------
+    // Боевая оплата. «Спит», пока не заданы YOOKASSA_SHOP_ID / YOOKASSA_SECRET_KEY.
+    if (path === 'payments/config' && method === 'GET') {
+      return res.json({ provider: 'yookassa', configured: isYooKassaConfigured() })
+    }
+    if (path === 'payments/create' && method === 'POST') {
+      return await createCoursePayment(req, res)
+    }
+    if (path === 'payments/webhook' && method === 'POST') {
+      return await handlePaymentWebhook(req, res)
+    }
+    if (segments[0] === 'payments' && segments[1] === 'by-order' && segments.length === 3 && method === 'GET') {
+      return await getOrderPaymentStatus(segments[2], res)
+    }
+    if (segments[0] === 'payments' && segments.length === 2 && method === 'GET') {
+      return await getPaymentStatus(segments[1], res)
+    }
+
+    // ---------- ADMIN · ЗАКАЗЫ (БД) ----------
+    if (path === 'admin/orders' && method === 'GET') return res.json(await listOrders())
+    if (path === 'admin/orders' && method === 'POST') return await createOrder(req, res)
+    if (path === 'admin/orders/reset' && method === 'POST') return await resetOrders(res)
+    if (segments[0] === 'admin' && segments[1] === 'orders' && segments.length === 3) {
+      const id = segments[2]
+      if (method === 'GET') return found(res, await getOrder(id), 'Заказ не найден')
+      if (method === 'PUT') return await updateOrder(id, req, res)
+      if (method === 'DELETE') return await deleteOrder(id, res)
     }
 
     return res.status(404).json({ message: `Маршрут не найден: ${method} /api/${path}` })
@@ -370,6 +419,428 @@ async function deleteNews(id: string, res: VercelResponse) {
   const sql = getSql()
   await sql`DELETE FROM news WHERE id = ${id}`
   return res.status(204).end()
+}
+
+// ---------------- news comments & reactions ----------------
+
+function toComment(r: Record<string, unknown>) {
+  return {
+    id: r.id as string,
+    newsId: r.news_id as string,
+    userId: (r.user_id as string | null) ?? null,
+    author: r.author as string,
+    body: r.body as string,
+    createdAt: r.created_at as string,
+  }
+}
+
+async function listComments(newsId: string) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const rows = await sql`
+    SELECT id, news_id, user_id, author, body, created_at
+    FROM news_comments WHERE news_id = ${newsId} ORDER BY created_at ASC
+  `
+  return rows.map(toComment)
+}
+
+async function createComment(newsId: string, req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const b = parseBody(req)
+  const author = (String(b.author ?? '').trim() || 'Участник').slice(0, 120)
+  const body = String(b.body ?? '').trim()
+  const userId = b.userId ? String(b.userId) : null
+  if (!body) return res.status(400).json({ message: 'Комментарий не может быть пустым.' })
+  if (body.length > 2000) return res.status(400).json({ message: 'Слишком длинный комментарий (макс. 2000 символов).' })
+  const id = `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+  const rows = await sql`
+    INSERT INTO news_comments (id, news_id, user_id, author, body)
+    VALUES (${id}, ${newsId}, ${userId}, ${author}, ${body})
+    RETURNING id, news_id, user_id, author, body, created_at
+  `
+  return res.status(201).json(toComment(rows[0]))
+}
+
+async function deleteComment(
+  newsId: string,
+  commentId: string,
+  req: VercelRequest,
+  res: VercelResponse,
+) {
+  const sql = getSql()
+  const rows = await sql`SELECT user_id FROM news_comments WHERE id = ${commentId} AND news_id = ${newsId} LIMIT 1`
+  if (!rows[0]) return res.status(404).json({ message: 'Комментарий не найден' })
+  const userId = typeof req.query.userId === 'string' ? req.query.userId : ''
+  const isOwner = Boolean(rows[0].user_id) && rows[0].user_id === userId
+  let isAdmin = false
+  if (userId) {
+    const u = await sql`SELECT kind FROM users WHERE id = ${userId} LIMIT 1`
+    isAdmin = u[0]?.kind === 'admin'
+  }
+  if (!isOwner && !isAdmin) return res.status(403).json({ message: 'Нет прав на удаление комментария.' })
+  await sql`DELETE FROM news_comments WHERE id = ${commentId}`
+  return res.status(204).end()
+}
+
+async function getReactions(newsId: string, userId: string) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const counts = await sql`
+    SELECT emoji, COUNT(*)::int AS n FROM news_reactions WHERE news_id = ${newsId} GROUP BY emoji
+  `
+  const mine = userId
+    ? await sql`SELECT emoji FROM news_reactions WHERE news_id = ${newsId} AND user_id = ${userId}`
+    : []
+  const countsObj: Record<string, number> = {}
+  for (const r of counts) countsObj[r.emoji as string] = Number(r.n)
+  return { counts: countsObj, mine: mine.map((r) => r.emoji as string) }
+}
+
+async function toggleReaction(newsId: string, req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const b = parseBody(req)
+  const userId = b.userId ? String(b.userId) : ''
+  const emoji = String(b.emoji ?? '').trim()
+  if (!userId) return res.status(401).json({ message: 'Войдите, чтобы поставить реакцию.' })
+  if (!emoji || emoji.length > 16) return res.status(400).json({ message: 'Некорректная реакция.' })
+  const existing = await sql`
+    SELECT 1 FROM news_reactions WHERE news_id = ${newsId} AND user_id = ${userId} AND emoji = ${emoji} LIMIT 1
+  `
+  if (existing[0]) {
+    await sql`DELETE FROM news_reactions WHERE news_id = ${newsId} AND user_id = ${userId} AND emoji = ${emoji}`
+  } else {
+    await sql`
+      INSERT INTO news_reactions (news_id, user_id, emoji) VALUES (${newsId}, ${userId}, ${emoji})
+      ON CONFLICT DO NOTHING
+    `
+  }
+  return res.json(await getReactions(newsId, userId))
+}
+
+// ---------------- admin participants (БД) ----------------
+
+async function ensureParticipantsSeeded(sql: ReturnType<typeof getSql>) {
+  const [{ count }] = await sql`SELECT COUNT(*)::int AS count FROM participants`
+  if (Number(count) > 0) return
+  for (let i = 0; i < adminUsers.length; i += 1) {
+    const p = adminUsers[i]
+    await sql`
+      INSERT INTO participants (id, data, sort_order)
+      VALUES (${p.id}, ${JSON.stringify(p)}::jsonb, ${i})
+      ON CONFLICT (id) DO NOTHING
+    `
+  }
+}
+
+async function listParticipants(): Promise<AdminUser[]> {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await ensureParticipantsSeeded(sql)
+  const rows = await sql`SELECT data FROM participants ORDER BY sort_order ASC`
+  return rows.map((r) => r.data as AdminUser)
+}
+
+async function getParticipant(id: string): Promise<AdminUser | undefined> {
+  const sql = getSql()
+  const rows = await sql`SELECT data FROM participants WHERE id = ${id} LIMIT 1`
+  return rows[0] ? (rows[0].data as AdminUser) : adminUsers.find((u) => u.id === id)
+}
+
+async function createParticipant(req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const body = parseBody(req) as Partial<AdminUser>
+  const taken = await sql`SELECT id FROM participants`
+  const ids = new Set(taken.map((r) => r.id as string))
+  const id = uniqueId((body.id && String(body.id).trim()) || `u-${Date.now().toString(36)}`, ids)
+  const participant = { ...body, id } as AdminUser
+  const [{ max }] = await sql`SELECT COALESCE(MAX(sort_order), 0) + 1 AS max FROM participants`
+  await sql`
+    INSERT INTO participants (id, data, sort_order)
+    VALUES (${id}, ${JSON.stringify(participant)}::jsonb, ${Number(max)})
+  `
+  return res.status(201).json(participant)
+}
+
+async function updateParticipant(id: string, req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  const rows = await sql`SELECT data FROM participants WHERE id = ${id} LIMIT 1`
+  if (!rows[0]) return res.status(404).json({ message: 'Участник не найден' })
+  const patch = parseBody(req) as Partial<AdminUser>
+  const next = { ...(rows[0].data as AdminUser), ...patch, id } as AdminUser
+  await sql`UPDATE participants SET data = ${JSON.stringify(next)}::jsonb, updated_at = NOW() WHERE id = ${id}`
+  return res.json(next)
+}
+
+async function setParticipantStatus(id: string, status: string, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await ensureParticipantsSeeded(sql)
+  const rows = await sql`SELECT data FROM participants WHERE id = ${id} LIMIT 1`
+  if (!rows[0]) return res.status(404).json({ message: 'Участник не найден' })
+  const next = { ...(rows[0].data as AdminUser), status } as AdminUser
+  await sql`UPDATE participants SET data = ${JSON.stringify(next)}::jsonb, updated_at = NOW() WHERE id = ${id}`
+  return res.json(next)
+}
+
+async function deleteParticipant(id: string, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await ensureParticipantsSeeded(sql)
+  await sql`DELETE FROM participants WHERE id = ${id}`
+  return res.status(204).end()
+}
+
+async function resetParticipants(res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await sql`DELETE FROM participants`
+  for (let i = 0; i < adminUsers.length; i += 1) {
+    await sql`
+      INSERT INTO participants (id, data, sort_order)
+      VALUES (${adminUsers[i].id}, ${JSON.stringify(adminUsers[i])}::jsonb, ${i})
+    `
+  }
+  return res.json(adminUsers)
+}
+
+// ---------------- admin orders (БД) ----------------
+
+async function ensureOrdersSeeded(sql: ReturnType<typeof getSql>) {
+  const [{ count }] = await sql`SELECT COUNT(*)::int AS count FROM orders`
+  if (Number(count) > 0) return
+  for (let i = 0; i < orders.length; i += 1) {
+    const o = orders[i]
+    await sql`
+      INSERT INTO orders (id, data, sort_order)
+      VALUES (${o.id}, ${JSON.stringify(o)}::jsonb, ${i})
+      ON CONFLICT (id) DO NOTHING
+    `
+  }
+}
+
+async function listOrders(): Promise<Order[]> {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await ensureOrdersSeeded(sql)
+  const rows = await sql`SELECT data FROM orders ORDER BY sort_order ASC`
+  return rows.map((r) => r.data as Order)
+}
+
+async function getOrder(id: string): Promise<Order | undefined> {
+  const sql = getSql()
+  const rows = await sql`SELECT data FROM orders WHERE id = ${id} LIMIT 1`
+  return rows[0] ? (rows[0].data as Order) : orders.find((o) => o.id === id)
+}
+
+async function createOrder(req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const body = parseBody(req) as Partial<Order>
+  const taken = await sql`SELECT id FROM orders`
+  const ids = new Set(taken.map((r) => r.id as string))
+  let id = (body.id && String(body.id).trim()) || ''
+  if (!id) {
+    let maxNum = 1042
+    for (const existing of ids) {
+      const n = Number(existing.replace(/\D/g, ''))
+      if (Number.isFinite(n) && n > maxNum) maxNum = n
+    }
+    id = `ORD-${maxNum + 1}`
+  }
+  id = uniqueId(id, ids)
+  const order = { ...body, id } as Order
+  const [{ min }] = await sql`SELECT COALESCE(MIN(sort_order), 0) - 1 AS min FROM orders`
+  await sql`
+    INSERT INTO orders (id, data, sort_order)
+    VALUES (${id}, ${JSON.stringify(order)}::jsonb, ${Number(min)})
+  `
+  return res.status(201).json(order)
+}
+
+async function updateOrder(id: string, req: VercelRequest, res: VercelResponse) {
+  const sql = getSql()
+  const rows = await sql`SELECT data FROM orders WHERE id = ${id} LIMIT 1`
+  if (!rows[0]) return res.status(404).json({ message: 'Заказ не найден' })
+  const patch = parseBody(req) as Partial<Order>
+  const next = { ...(rows[0].data as Order), ...patch, id } as Order
+  await sql`UPDATE orders SET data = ${JSON.stringify(next)}::jsonb, updated_at = NOW() WHERE id = ${id}`
+  return res.json(next)
+}
+
+async function deleteOrder(id: string, res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await ensureOrdersSeeded(sql)
+  await sql`DELETE FROM orders WHERE id = ${id}`
+  return res.status(204).end()
+}
+
+async function resetOrders(res: VercelResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await sql`DELETE FROM orders`
+  for (let i = 0; i < orders.length; i += 1) {
+    await sql`
+      INSERT INTO orders (id, data, sort_order)
+      VALUES (${orders[i].id}, ${JSON.stringify(orders[i])}::jsonb, ${i})
+    `
+  }
+  return res.json(orders)
+}
+
+// ---------------- payments (ЮKassa) ----------------
+
+/** Базовый URL сайта для return_url (из заголовков запроса или env). */
+function siteOrigin(req: VercelRequest): string {
+  if (process.env.YOOKASSA_RETURN_URL) return process.env.YOOKASSA_RETURN_URL.replace(/\/$/, '')
+  const proto = (req.headers['x-forwarded-proto'] as string) || 'https'
+  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost'
+  return `${proto}://${host}`
+}
+
+/**
+ * POST /api/payments/create
+ * Тело: { courseId, email, userId? }
+ * Создаёт платёж в ЮKassa, заводит заказ со статусом pending и возвращает
+ * ссылку на платёжную форму. Цена берётся из БД — клиент её не диктует.
+ */
+async function createCoursePayment(req: VercelRequest, res: VercelResponse) {
+  if (!isYooKassaConfigured()) {
+    return res.status(503).json({ message: 'Онлайн-оплата временно недоступна.' })
+  }
+  const { courseId, email, userId } = parseBody(req)
+  const course = await getCourse(String(courseId ?? ''))
+  if (!course) return res.status(404).json({ message: 'Программа не найдена' })
+  if (!course.price || course.price <= 0) {
+    return res.status(400).json({ message: 'У программы не задана цена.' })
+  }
+
+  const sql = getSql()
+  await ensureSchema(sql)
+
+  // Заводим заказ заранее (pending), чтобы webhook мог его найти.
+  const taken = await sql`SELECT id FROM orders`
+  const ids = new Set(taken.map((r) => r.id as string))
+  let maxNum = 1042
+  for (const existing of ids) {
+    const n = Number(String(existing).replace(/\D/g, ''))
+    if (Number.isFinite(n) && n > maxNum) maxNum = n
+  }
+  const orderId = uniqueId(`ORD-${maxNum + 1}`, ids)
+
+  const payment = await createPayment({
+    amount: course.price,
+    currency: 'RUB',
+    description: `Доступ к программе «${course.title}» (${orderId})`,
+    returnUrl: `${siteOrigin(req)}/checkout?course=${course.id}&order=${orderId}`,
+    metadata: { orderId, courseId: course.id, userId: String(userId ?? '') },
+    idempotenceKey: orderId,
+    receiptEmail: email ? String(email) : undefined,
+  })
+
+  const order: Order = {
+    id: orderId,
+    userId: String(userId ?? ''),
+    courseId: course.id,
+    amount: course.price,
+    date: new Date().toISOString().slice(0, 10),
+    status: 'pending',
+    method: 'Карта',
+    email: email ? String(email) : undefined,
+    paymentId: payment.id,
+    provider: 'yookassa',
+  }
+  const [{ min }] = await sql`SELECT COALESCE(MIN(sort_order), 0) - 1 AS min FROM orders`
+  await sql`
+    INSERT INTO orders (id, data, sort_order)
+    VALUES (${orderId}, ${JSON.stringify(order)}::jsonb, ${Number(min)})
+  `
+
+  const confirmationUrl = payment.confirmation?.confirmation_url
+  if (!confirmationUrl) {
+    return res.status(502).json({ message: 'ЮKassa не вернула ссылку на оплату.' })
+  }
+  return res.status(201).json({ orderId, paymentId: payment.id, confirmationUrl })
+}
+
+/** Применить актуальный статус платежа ЮKassa к заказу в БД. */
+async function applyPaymentStatus(payment: { id: string; status: string; metadata?: Record<string, string> }) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const orderId = payment.metadata?.orderId
+  const rows = orderId
+    ? await sql`SELECT data FROM orders WHERE id = ${orderId} LIMIT 1`
+    : await sql`SELECT data FROM orders WHERE data->>'paymentId' = ${payment.id} LIMIT 1`
+  if (!rows[0]) return null
+  const order = rows[0].data as Order
+  const nextStatus: OrderStatus =
+    payment.status === 'succeeded'
+      ? 'paid'
+      : payment.status === 'canceled'
+        ? 'refunded'
+        : 'pending'
+  if (order.status === nextStatus) return order
+  const next: Order = { ...order, status: nextStatus }
+  await sql`UPDATE orders SET data = ${JSON.stringify(next)}::jsonb, updated_at = NOW() WHERE id = ${order.id}`
+  return next
+}
+
+/**
+ * POST /api/payments/webhook
+ * Уведомление от ЮKassa. Доверяем не телу, а перезапрашиваем платёж по id
+ * (защита от подделки) и проставляем статус заказа.
+ */
+async function handlePaymentWebhook(req: VercelRequest, res: VercelResponse) {
+  if (!isYooKassaConfigured()) return res.status(503).json({ message: 'not configured' })
+  try {
+    const body = parseBody(req) as { object?: { id?: string } }
+    const paymentId = body.object?.id
+    if (!paymentId) return res.status(400).json({ message: 'no payment id' })
+    const payment = await getPayment(String(paymentId))
+    await applyPaymentStatus(payment)
+  } catch (err) {
+    console.error('[payments] webhook error:', err)
+    // Возвращаем 200, чтобы ЮKassa не зациклила ретраи на нашей ошибке БД.
+  }
+  return res.status(200).json({ ok: true })
+}
+
+/**
+ * GET /api/payments/:id
+ * Используется на странице возврата, чтобы показать актуальный статус, не
+ * дожидаясь webhook.
+ */
+async function getPaymentStatus(id: string, res: VercelResponse) {
+  if (!isYooKassaConfigured()) return res.status(503).json({ message: 'Онлайн-оплата недоступна.' })
+  const payment = await getPayment(id)
+  const order = await applyPaymentStatus(payment)
+  return res.json({ paymentId: payment.id, status: payment.status, paid: payment.status === 'succeeded', orderId: order?.id })
+}
+
+/**
+ * GET /api/payments/by-order/:orderId
+ * Возврат после оплаты: по номеру заказа находим платёж, перезапрашиваем его
+ * статус в ЮKassa и отдаём актуальное состояние (не дожидаясь webhook).
+ */
+async function getOrderPaymentStatus(orderId: string, res: VercelResponse) {
+  const sql = getSql()
+  const rows = await sql`SELECT data FROM orders WHERE id = ${orderId} LIMIT 1`
+  if (!rows[0]) return res.status(404).json({ message: 'Заказ не найден' })
+  const order = rows[0].data as Order
+  if (!order.paymentId || !isYooKassaConfigured()) {
+    return res.json({ orderId, status: order.status, paid: order.status === 'paid' })
+  }
+  const payment = await getPayment(order.paymentId)
+  const updated = await applyPaymentStatus(payment)
+  return res.json({
+    orderId,
+    status: (updated ?? order).status,
+    paid: (updated ?? order).status === 'paid',
+    courseId: order.courseId,
+  })
 }
 
 async function updateProfile(req: VercelRequest, res: VercelResponse) {

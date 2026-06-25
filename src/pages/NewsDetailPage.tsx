@@ -3,6 +3,9 @@ import { Container } from '@/components/ui/Section'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Crest } from '@/components/brand/Crest'
+import { Carousel } from '@/components/ui/Carousel'
+import { NewsEngagement } from '@/components/news/NewsEngagement'
+import { Linkify } from '@/components/ui/Linkify'
 import { api } from '@/api'
 import { useAsync } from '@/hooks/useAsync'
 import { formatDate } from '@/lib/utils'
@@ -27,6 +30,7 @@ export default function NewsDetailPage() {
   }
 
   const related = news.filter((n) => n.id !== item.id && n.category === item.category).slice(0, 2)
+  const gallery = item.images?.length ? item.images : item.cover ? [item.cover] : []
 
   return (
     <article className="py-14 md:py-20">
@@ -41,26 +45,32 @@ export default function NewsDetailPage() {
           <h1 className="mt-3 font-serif text-4xl leading-tight text-neft">{item.title}</h1>
         </div>
 
-        <div className="relative my-10 flex h-56 items-center justify-center overflow-hidden rounded-card bg-neft md:h-80">
-          {item.cover ? (
+        {gallery.length > 1 ? (
+          <Carousel images={gallery} className="my-10" />
+        ) : gallery.length === 1 ? (
+          <div className="my-10 flex justify-center overflow-hidden rounded-card bg-neft">
             <img
-              src={item.cover}
+              src={gallery[0]}
               alt=""
-              className="absolute inset-0 h-full w-full object-cover"
+              className="max-h-[32rem] w-full object-contain"
             />
-          ) : (
-            <>
-              <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
-              <Crest className="relative h-24 w-24" onDark />
-            </>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="relative my-10 flex h-56 items-center justify-center overflow-hidden rounded-card bg-neft md:h-80">
+            <div className="brand-pattern absolute inset-0 opacity-[0.08]" />
+            <Crest className="relative h-24 w-24" onDark />
+          </div>
+        )}
 
         <div className="space-y-5 text-lg leading-relaxed text-ink-80">
           {item.body.map((p, i) => (
-            <p key={i}>{p}</p>
+            <p key={i}>
+              <Linkify text={p} />
+            </p>
           ))}
         </div>
+
+        <NewsEngagement newsId={item.id} />
 
         {related.length > 0 && (
           <div className="mt-16 border-t border-ink-10 pt-10">

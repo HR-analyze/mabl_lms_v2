@@ -9,6 +9,8 @@ import LoginPage from './pages/LoginPage'
 import CheckoutPage from './pages/CheckoutPage'
 import CoursesPage from './pages/CoursesPage'
 import CourseDetailPage from './pages/CourseDetailPage'
+import ProgramsPage from './pages/ProgramsPage'
+import ProgramDetailPage from './pages/ProgramDetailPage'
 import NewsPage from './pages/NewsPage'
 import NewsDetailPage from './pages/NewsDetailPage'
 import CalendarPage from './pages/CalendarPage'
@@ -60,6 +62,8 @@ export default function App() {
 
         {/* Общие разделы: гостю — публичный каркас, слушателю — каркас кабинета */}
         <Route element={<ContentLayout />}>
+          <Route path="/programs" element={<ProgramsPage />} />
+          <Route path="/programs/:id" element={<ProgramDetailPage />} />
           <Route path="/courses" element={<CoursesPage />} />
           <Route path="/courses/:id" element={<CourseDetailPage />} />
           <Route path="/news" element={<NewsPage />} />

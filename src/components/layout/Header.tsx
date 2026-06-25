@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 
 const publicNav = [
+  { to: '/programs', label: 'Программы' },
   { to: '/courses', label: 'Курсы' },
   { to: '/news', label: 'Новости' },
   { to: '/calendar', label: 'Календарь' },

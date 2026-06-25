@@ -1,6 +1,8 @@
 import bcrypt from 'bcryptjs'
 import type { NeonQueryFunction } from '@neondatabase/serverless'
 import { courses as seedCourses } from '../src/data/courses.js'
+import { adminUsers as seedParticipants } from '../src/data/users.js'
+import { orders as seedOrders } from '../src/data/orders.js'
 
 /**
  * Совместно используемая логика инициализации БД (схема + сиды).
@@ -59,6 +61,43 @@ export async function ensureSchema(sql: Sql): Promise<void> {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `
+  await sql`
+    CREATE TABLE IF NOT EXISTS news_comments (
+      id TEXT PRIMARY KEY,
+      news_id TEXT NOT NULL,
+      user_id TEXT,
+      author TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS idx_news_comments_news ON news_comments (news_id, created_at)`
+  await sql`
+    CREATE TABLE IF NOT EXISTS news_reactions (
+      news_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (news_id, user_id, emoji)
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS idx_news_reactions_news ON news_reactions (news_id)`
+  await sql`
+    CREATE TABLE IF NOT EXISTS participants (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      sort_order INT DEFAULT 0,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `
+  await sql`
+    CREATE TABLE IF NOT EXISTS orders (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      sort_order INT DEFAULT 0,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `
 }
 
 /** Полная инициализация: схема + сиды курсов и аккаунтов (без перезаписи существующих). */
@@ -70,6 +109,23 @@ export async function initDatabase(sql: Sql): Promise<{ courses: number; users: 
     await sql`
       INSERT INTO courses (id, data, sort_order)
       VALUES (${course.id}, ${JSON.stringify(course)}::jsonb, ${i})
+      ON CONFLICT (id) DO NOTHING
+    `
+  }
+
+  for (let i = 0; i < seedParticipants.length; i += 1) {
+    const p = seedParticipants[i]
+    await sql`
+      INSERT INTO participants (id, data, sort_order)
+      VALUES (${p.id}, ${JSON.stringify(p)}::jsonb, ${i})
+      ON CONFLICT (id) DO NOTHING
+    `
+  }
+  for (let i = 0; i < seedOrders.length; i += 1) {
+    const o = seedOrders[i]
+    await sql`
+      INSERT INTO orders (id, data, sort_order)
+      VALUES (${o.id}, ${JSON.stringify(o)}::jsonb, ${i})
       ON CONFLICT (id) DO NOTHING
     `
   }

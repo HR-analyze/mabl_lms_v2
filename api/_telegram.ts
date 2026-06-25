@@ -20,7 +20,7 @@ type Sql = NeonQueryFunction<false, false>
 interface RawPost {
   messageId: string
   rawText: string
-  cover?: string
+  images: string[]
   date: string
 }
 
@@ -75,22 +75,33 @@ function parsePosts(html: string): RawPost[] {
     if (!idMatch) continue
     const messageId = idMatch[1]
 
+    // Текст поста лежит в .tgme_widget_message_text и не содержит вложенных
+    // <div>, поэтому берём содержимое до первого </div>. Это важно: иначе
+    // в текст затягивался блок реакций из футера поста.
     const textMatch = block.match(
-      /<div class="tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>\s*(?:<div class="tgme_widget_message_(?:footer|reply_markup|info)|<\/div>)/,
+      /<div class="tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/,
     )
     const rawText = textMatch ? textMatch[1] : ''
 
-    // Первое фоновое изображение в блоке — обложка поста (фото или превью видео).
-    const imgMatch = block.match(/background-image:url\('([^']+)'\)/)
-    const cover = imgMatch ? imgMatch[1] : undefined
+    // Берём фон ТОЛЬКО у настоящих медиа-блоков (фото/видео), но не у эмодзи —
+    // Telegram рендерит эмодзи тем же background-image, их включать не нужно.
+    const images: string[] = []
+    const imgRe =
+      /tgme_widget_message_(?:photo_wrap|video_thumb|roundvideo_thumb)[^"]*"[^>]*?background-image:url\('([^']+)'\)/g
+    let imgMatch: RegExpExecArray | null
+    while ((imgMatch = imgRe.exec(block)) !== null) {
+      const url = imgMatch[1].replace(/&amp;/g, '&')
+      if (url.includes('/img/emoji/')) continue
+      if (!images.includes(url)) images.push(url)
+    }
 
     const timeMatch = block.match(/<time[^>]*datetime="([^"]+)"/)
     const date = timeMatch ? timeMatch[1] : new Date().toISOString()
 
     // Пропускаем посты без текста и без картинки (служебные / опросы).
-    if (!rawText && !cover) continue
+    if (!rawText && images.length === 0) continue
 
-    posts.push({ messageId, rawText, cover, date })
+    posts.push({ messageId, rawText, images, date })
   }
 
   return posts
@@ -101,6 +112,13 @@ function htmlToText(html: string): string {
   return html
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div)>/gi, '\n')
+    // Ссылки: сохраняем адрес, чтобы он остался кликабельным в тексте.
+    // Если текст ссылки отличается от адреса — выводим «текст (адрес)».
+    .replace(/<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href: string, inner: string) => {
+      const label = inner.replace(/<[^>]+>/g, '').trim()
+      if (!label || label === href || /^https?:\/\//i.test(label)) return href
+      return `${label} (${href})`
+    })
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
@@ -115,10 +133,14 @@ function htmlToText(html: string): string {
     .trim()
 }
 
+/** Обрезает строку до max символов по границе слова, добавляя «…». */
 function truncate(value: string, max: number): string {
   const v = value.trim()
   if (v.length <= max) return v
-  return `${v.slice(0, max - 1).trimEnd()}…`
+  const slice = v.slice(0, max)
+  const lastSpace = slice.lastIndexOf(' ')
+  const base = (lastSpace > max * 0.6 ? slice.slice(0, lastSpace) : slice).trimEnd()
+  return `${base.replace(/[.,;:—–-]+$/, '')}…`
 }
 
 /** Маппит сырой пост в доменную модель новости. */
@@ -129,11 +151,13 @@ export function postToNewsItem(post: RawPost, channel: string): NewsItem {
     .map((s) => s.trim())
     .filter(Boolean)
 
-  const title = lines.length > 0 ? truncate(lines[0], 120) : 'Новость канала'
-  const restLines = lines.slice(1)
-  const body = restLines.length > 0 ? restLines : lines.length > 0 ? lines : [title]
-  const excerptSource = restLines.join(' ') || lines.join(' ') || title
-  const excerpt = truncate(excerptSource, 200)
+  // Заголовок — короткая «шапка» из первой строки поста (для карточек и H1).
+  const title = lines.length > 0 ? truncate(lines[0], 90) : 'Новость канала'
+  // Тело — ПОЛНЫЙ текст поста (первая строка не теряется), абзацами.
+  const body = lines.length > 0 ? lines : [title]
+  // Анонс — продолжение после первой строки, иначе сам текст.
+  const rest = lines.slice(1).join(' ')
+  const excerpt = truncate(rest || lines.join(' ') || title, 200)
 
   const words = text ? text.split(/\s+/).filter(Boolean).length : 0
   const minutes = Math.max(1, Math.round(words / 150))
@@ -146,7 +170,8 @@ export function postToNewsItem(post: RawPost, channel: string): NewsItem {
     category: 'Академия',
     date: post.date,
     readingTime: `${minutes} мин`,
-    cover: post.cover,
+    cover: post.images[0],
+    images: post.images,
   }
 }
 
