@@ -5,7 +5,7 @@ import { ProgressBar } from './ui/ProgressBar'
 import { ArrowRight, Lock } from './ui/Icon'
 import { Badge } from './ui/Badge'
 import { courseFormatLabel } from '@/lib/labels'
-import { formatPrice, formatDuration, cn } from '@/lib/utils'
+import { formatPrice, formatDuration, displayTitle, isFree, cn } from '@/lib/utils'
 import { courses } from '@/data/courses'
 
 interface CourseCardProps {
@@ -37,7 +37,7 @@ function CourseCover({ course }: { course: Course }) {
 
       {/* название программы на брендовой плоскости */}
       <span className="relative line-clamp-3 px-10 text-center font-serif text-[1.35rem] font-light leading-tight text-wisdom">
-        {course.title}
+        {displayTitle(course.title)}
       </span>
 
       {/* формат */}
@@ -90,10 +90,17 @@ export function CourseCard({ course, owned }: CourseCardProps) {
         ) : (
           <div className="flex items-center justify-between gap-3 border-t border-ink-10 pt-4">
             <span className="font-serif text-lg text-neft">{formatPrice(course.price)}</span>
-            <Button to={`/checkout?course=${course.id}`} size="sm">
-              <Lock width={15} height={15} />
-              Купить
-            </Button>
+            {isFree(course.price) ? (
+              <Button to={`/checkout?course=${course.id}`} size="sm">
+                Получить доступ
+                <ArrowRight width={15} height={15} />
+              </Button>
+            ) : (
+              <Button to={`/checkout?course=${course.id}`} size="sm">
+                <Lock width={15} height={15} />
+                Купить
+              </Button>
+            )}
           </div>
         )}
       </div>
