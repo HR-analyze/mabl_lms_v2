@@ -5,7 +5,7 @@ import { ProgressBar } from './ui/ProgressBar'
 import { ArrowRight, Lock } from './ui/Icon'
 import { Badge } from './ui/Badge'
 import { courseFormatLabel } from '@/lib/labels'
-import { formatPrice, cn } from '@/lib/utils'
+import { formatPrice, formatDuration, cn } from '@/lib/utils'
 import { courses } from '@/data/courses'
 
 interface CourseCardProps {
@@ -69,7 +69,7 @@ export function CourseCard({ course, owned }: CourseCardProps) {
         <div className="mb-3 flex items-center gap-2 text-[0.7rem] uppercase tracking-wide text-ink-60">
           <span>{course.level}</span>
           <span className="h-1 w-1 rounded-full bg-ink-20" />
-          <span>{course.durationHours} ч</span>
+          <span>{formatDuration(course.durationHours)}</span>
         </div>
 
         <p className="text-sm text-ink-60">

@@ -45,6 +45,11 @@ export default function AdminCourseEditPage() {
   // Локальная форма; источник — существующий курс или пустой черновик.
   const [form, setForm] = useState<Course>(() => existing ?? blankCourse())
   const [tagsText, setTagsText] = useState(() => (existing?.tags ?? []).join(', '))
+  // Единица измерения длительности. Дробные часы (например, 0.5) показываем
+  // в минутах, чтобы значение читалось без потери точности.
+  const [durationUnit, setDurationUnit] = useState<'hours' | 'minutes'>(() =>
+    existing && existing.durationHours > 0 && existing.durationHours % 1 !== 0 ? 'minutes' : 'hours',
+  )
   const [error, setError] = useState('')
 
   const lessonsTotal = useMemo(
@@ -175,13 +180,36 @@ export default function AdminCourseEditPage() {
         />
 
         <div className="grid gap-6 sm:grid-cols-3">
-          <Input
-            label="Длительность, ч"
-            type="number"
-            min={0}
-            value={String(form.durationHours)}
-            onChange={(e) => set('durationHours', num(e.target.value))}
-          />
+          <label className="block">
+            <span className="mb-2 block text-[0.72rem] uppercase tracking-wide text-ink-60">
+              Длительность
+            </span>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min={0}
+                step={durationUnit === 'minutes' ? 5 : 1}
+                className={cn(fieldBase, 'flex-1')}
+                value={String(
+                  durationUnit === 'minutes'
+                    ? Math.round(form.durationHours * 60)
+                    : form.durationHours,
+                )}
+                onChange={(e) => {
+                  const value = num(e.target.value)
+                  set('durationHours', durationUnit === 'minutes' ? value / 60 : value)
+                }}
+              />
+              <select
+                className={cn(fieldBase, 'w-28')}
+                value={durationUnit}
+                onChange={(e) => setDurationUnit(e.target.value as 'hours' | 'minutes')}
+              >
+                <option value="hours">часы</option>
+                <option value="minutes">минуты</option>
+              </select>
+            </div>
+          </label>
           <Input
             label="Число уроков"
             type="number"
@@ -197,16 +225,6 @@ export default function AdminCourseEditPage() {
             onChange={(e) => set('price', num(e.target.value))}
           />
         </div>
-
-        <Input
-          label="Прогресс, % (0–100)"
-          type="number"
-          min={0}
-          max={100}
-          value={String(form.progress)}
-          onChange={(e) => set('progress', num(e.target.value))}
-          hint="Демонстрационный прогресс прохождения для личного кабинета."
-        />
 
         <Input
           label="Теги (через запятую)"

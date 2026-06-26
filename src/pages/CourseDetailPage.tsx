@@ -11,7 +11,7 @@ import { ScormPlayer } from '@/components/ScormPlayer'
 import type { ScormStatus } from '@/components/ScormPlayer'
 import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
-import { formatPrice, cn } from '@/lib/utils'
+import { formatPrice, formatDuration, cn } from '@/lib/utils'
 import { courseFormatLabel } from '@/lib/labels'
 import type { Lesson } from '@/types'
 
@@ -139,7 +139,7 @@ export default function CourseDetailPage() {
               <p className="mt-4 max-w-2xl text-lg text-wisdom/70">{course.subtitle}</p>
               <div className="mt-6 flex flex-wrap gap-x-8 gap-y-2 text-sm text-wisdom/60">
                 <span>Преподаватель: {course.instructor}</span>
-                <span>{course.durationHours} часов</span>
+                <span>{formatDuration(course.durationHours)}</span>
                 <span>{course.lessonsCount} уроков</span>
               </div>
             </div>

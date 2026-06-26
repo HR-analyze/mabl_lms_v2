@@ -29,5 +29,19 @@ export function formatPrice(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(value) + ' ₽'
 }
 
+/**
+ * Длительность курса в часах → человекочитаемая строка.
+ * Дробные часы показываются с минутами: 0.5 → «30 мин», 1.5 → «1 ч 30 мин».
+ */
+export function formatDuration(hours: number): string {
+  const totalMinutes = Math.round((hours || 0) * 60)
+  if (totalMinutes <= 0) return '0 ч'
+  const h = Math.floor(totalMinutes / 60)
+  const m = totalMinutes % 60
+  if (h === 0) return `${m} мин`
+  if (m === 0) return `${h} ч`
+  return `${h} ч ${m} мин`
+}
+
 /** Имитация задержки сети для mock-сценариев */
 export const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))

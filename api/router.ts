@@ -4,17 +4,31 @@ import { getSql } from './_db.js'
 import { ensureSchema, initDatabase } from './_seed.js'
 import { syncTelegramNews } from './_telegram.js'
 import { isYooKassaConfigured, createPayment, getPayment } from './_yookassa.js'
-import type { AdminUser, Course, NewsItem, Order, OrderStatus, User } from '../src/types'
+import { signToken, requireAdmin } from './_auth.js'
+import type {
+  AdminUser,
+  AppNotification,
+  CalendarEvent,
+  Course,
+  ForumSection,
+  ForumTopic,
+  Material,
+  NewsItem,
+  Order,
+  OrderStatus,
+  Survey,
+  User,
+} from '../src/types'
 
 // Mock-модули служат источником статического контента (только import type внутри —
 // при сборке зависимостей от @/ не остаётся). Расширения .js обязательны для ESM.
 import { courses as seedCourses } from '../src/data/courses.js'
-import { events, getNextWebinar } from '../src/data/events.js'
+import { events as seedEvents } from '../src/data/events.js'
 import { news } from '../src/data/news.js'
-import { materials } from '../src/data/materials.js'
-import { surveys } from '../src/data/surveys.js'
-import { forumSections, forumTopics } from '../src/data/forum.js'
-import { notifications } from '../src/data/notifications.js'
+import { materials as seedMaterials } from '../src/data/materials.js'
+import { surveys as seedSurveys } from '../src/data/surveys.js'
+import { forumSections as seedForumSections, forumTopics as seedForumTopics } from '../src/data/forum.js'
+import { notifications as seedNotifications } from '../src/data/notifications.js'
 import { orders } from '../src/data/orders.js'
 import { adminUsers } from '../src/data/users.js'
 
@@ -59,6 +73,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const path = segments.join('/')
   console.log(`[api] ${method} /${path} | url=${req.url}`)
 
+  // ---------- ЗАЩИТА ----------
+  // Любая мутация и весь раздел admin/* требуют прав администратора, кроме
+  // явно публичных действий (вход, восстановление, оплата, комментарии и
+  // реакции к новостям, cron-синхронизация новостей по GET).
+  const isMutation = method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS'
+  const isPublicMutation =
+    path === 'auth/login' ||
+    path === 'auth/recover' ||
+    path === 'auth/migrate' ||
+    path === 'payments/create' ||
+    path === 'payments/webhook' ||
+    (segments[0] === 'news' && (segments[2] === 'comments' || segments[2] === 'reactions'))
+  const needsAdmin = segments[0] === 'admin' || (isMutation && !isPublicMutation)
+  if (needsAdmin && !requireAdmin(req, res)) return
+
   try {
     // ---------- AUTH ----------
     if (path === 'auth/login' && method === 'POST') {
@@ -97,11 +126,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (method === 'DELETE') return await deleteCourse(id, res)
     }
 
-    // ---------- EVENTS (mock) ----------
-    if (path === 'events' && method === 'GET') return res.json(events)
-    if (path === 'events/next' && method === 'GET') return res.json(getNextWebinar() ?? null)
-    if (segments[0] === 'events' && segments.length === 2 && method === 'GET') {
-      return found(res, events.find((e) => e.id === segments[1]), 'Событие не найдено')
+    // ---------- EVENTS (БД) ----------
+    if (path === 'events' && method === 'GET') {
+      return res.json(await contentList<CalendarEvent>('events', seedEvents))
+    }
+    if (path === 'events' && method === 'POST') {
+      return res.status(201).json(
+        await contentCreate<CalendarEvent>('events', parseBody(req) as CalendarEvent, 'event'),
+      )
+    }
+    if (path === 'events/next' && method === 'GET') {
+      const list = await contentList<CalendarEvent>('events', seedEvents)
+      const next = list
+        .filter((e) => e.type === 'Вебинар')
+        .sort((a, b) => +new Date(a.date) - +new Date(b.date))[0]
+      return res.json(next ?? null)
+    }
+    if (path === 'events/reset' && method === 'POST') {
+      return res.json(await contentReset<CalendarEvent>('events', seedEvents))
+    }
+    if (segments[0] === 'events' && segments.length === 2) {
+      const id = segments[1]
+      if (method === 'GET') return found(res, await contentGet<CalendarEvent>('events', id), 'Событие не найдено')
+      if (method === 'PUT') return res.json(await contentUpdate<CalendarEvent>('events', id, parseBody(req)))
+      if (method === 'DELETE') { await contentRemove('events', id); return res.status(204).end() }
     }
 
     // ---------- NEWS (БД + импорт из Telegram) ----------
@@ -142,30 +190,113 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (method === 'DELETE') return await deleteNews(id, res)
     }
 
-    // ---------- MATERIALS (mock) ----------
-    if (path === 'materials' && method === 'GET') return res.json(materials)
-    if (segments[0] === 'materials' && segments.length === 2 && method === 'GET') {
-      return found(res, materials.find((m) => m.id === segments[1]), 'Материал не найден')
+    // ---------- MATERIALS (БД) ----------
+    if (path === 'materials' && method === 'GET') {
+      return res.json(await contentList<Material>('materials', seedMaterials))
+    }
+    if (path === 'materials' && method === 'POST') {
+      return res.status(201).json(
+        await contentCreate<Material>('materials', parseBody(req) as Material, 'material'),
+      )
+    }
+    if (path === 'materials/reset' && method === 'POST') {
+      return res.json(await contentReset<Material>('materials', seedMaterials))
+    }
+    if (segments[0] === 'materials' && segments.length === 2) {
+      const id = segments[1]
+      if (method === 'GET') return found(res, await contentGet<Material>('materials', id), 'Материал не найден')
+      if (method === 'PUT') return res.json(await contentUpdate<Material>('materials', id, parseBody(req)))
+      if (method === 'DELETE') { await contentRemove('materials', id); return res.status(204).end() }
     }
 
-    // ---------- SURVEYS (mock) ----------
-    if (path === 'surveys' && method === 'GET') return res.json(surveys)
-    if (segments[0] === 'surveys' && segments.length === 2 && method === 'GET') {
-      return found(res, surveys.find((s) => s.id === segments[1]), 'Опросник не найден')
+    // ---------- SURVEYS (БД) ----------
+    if (path === 'surveys' && method === 'GET') {
+      return res.json(await contentList<Survey>('surveys', seedSurveys))
+    }
+    if (path === 'surveys' && method === 'POST') {
+      return res.status(201).json(
+        await contentCreate<Survey>('surveys', parseBody(req) as Survey, 'survey'),
+      )
+    }
+    if (path === 'surveys/reset' && method === 'POST') {
+      return res.json(await contentReset<Survey>('surveys', seedSurveys))
+    }
+    if (segments[0] === 'surveys' && segments.length === 2) {
+      const id = segments[1]
+      if (method === 'GET') return found(res, await contentGet<Survey>('surveys', id), 'Опросник не найден')
+      if (method === 'PUT') return res.json(await contentUpdate<Survey>('surveys', id, parseBody(req)))
+      if (method === 'DELETE') { await contentRemove('surveys', id); return res.status(204).end() }
     }
 
-    // ---------- FORUM (mock) ----------
-    if (path === 'forum/sections' && method === 'GET') return res.json(forumSections)
-    if (path === 'forum/topics' && method === 'GET') return res.json(forumTopics)
-    if (path.startsWith('forum/sections/') && segments.length === 3 && method === 'GET') {
-      return found(res, forumSections.find((s) => s.id === segments[2]), 'Раздел не найден')
+    // ---------- FORUM (БД) ----------
+    if (path === 'forum/sections' && method === 'GET') {
+      return res.json(await forumSectionsWithCounts())
     }
-    if (path.startsWith('forum/topics/') && segments.length === 3 && method === 'GET') {
-      return found(res, forumTopics.find((t) => t.id === segments[2]), 'Тема не найдена')
+    if (path === 'forum/sections' && method === 'POST') {
+      const created = await contentCreate<ForumSection>(
+        'forum_sections',
+        { ...(parseBody(req) as ForumSection), topicsCount: 0 },
+        'section',
+      )
+      return res.status(201).json(created)
+    }
+    if (path === 'forum/topics' && method === 'GET') {
+      return res.json(await contentList<ForumTopic>('forum_topics', seedForumTopics))
+    }
+    if (path === 'forum/topics' && method === 'POST') {
+      const body = parseBody(req) as ForumTopic
+      const created = await contentCreate<ForumTopic>(
+        'forum_topics',
+        { ...body, comments: body.comments ?? [] },
+        'topic',
+        true,
+      )
+      return res.status(201).json(created)
+    }
+    if (path === 'forum/reset' && method === 'POST') {
+      await contentReset<ForumSection>('forum_sections', seedForumSections)
+      await contentReset<ForumTopic>('forum_topics', seedForumTopics)
+      return res.json({ ok: true })
+    }
+    if (segments[0] === 'forum' && segments[1] === 'sections' && segments.length === 3) {
+      const id = segments[2]
+      if (method === 'GET') {
+        const section = (await forumSectionsWithCounts()).find((s) => s.id === id)
+        return found(res, section, 'Раздел не найден')
+      }
+      if (method === 'PUT') return res.json(await contentUpdate<ForumSection>('forum_sections', id, parseBody(req)))
+      if (method === 'DELETE') {
+        await contentRemove('forum_sections', id)
+        // Темы удалённого раздела убираем, чтобы не «висели» без раздела.
+        const topics = await contentList<ForumTopic>('forum_topics', seedForumTopics)
+        for (const t of topics.filter((t) => t.sectionId === id)) await contentRemove('forum_topics', t.id)
+        return res.status(204).end()
+      }
+    }
+    if (segments[0] === 'forum' && segments[1] === 'topics' && segments.length === 3) {
+      const id = segments[2]
+      if (method === 'GET') return found(res, await contentGet<ForumTopic>('forum_topics', id), 'Тема не найдена')
+      if (method === 'PUT') return res.json(await contentUpdate<ForumTopic>('forum_topics', id, parseBody(req)))
+      if (method === 'DELETE') { await contentRemove('forum_topics', id); return res.status(204).end() }
     }
 
-    // ---------- NOTIFICATIONS (mock) ----------
-    if (path === 'notifications' && method === 'GET') return res.json(notifications)
+    // ---------- NOTIFICATIONS (БД) ----------
+    if (path === 'notifications' && method === 'GET') {
+      return res.json(await contentList<AppNotification>('notifications', seedNotifications))
+    }
+    if (path === 'notifications' && method === 'POST') {
+      return res.status(201).json(
+        await contentCreate<AppNotification>('notifications', parseBody(req) as AppNotification, 'note', true),
+      )
+    }
+    if (path === 'notifications/reset' && method === 'POST') {
+      return res.json(await contentReset<AppNotification>('notifications', seedNotifications))
+    }
+    if (segments[0] === 'notifications' && segments.length === 2) {
+      const id = segments[1]
+      if (method === 'PUT') return res.json(await contentUpdate<AppNotification>('notifications', id, parseBody(req)))
+      if (method === 'DELETE') { await contentRemove('notifications', id); return res.status(204).end() }
+    }
 
     // ---------- PROFILE ----------
     if (path === 'admin/profile' && method === 'PATCH') {
@@ -299,7 +430,8 @@ async function login(req: VercelRequest, res: VercelResponse) {
     role: row.role as string,
     kind: (row.kind as User['kind']) ?? 'student',
   }
-  return res.json(user)
+  const token = signToken({ id: user.id, kind: user.kind })
+  return res.json({ ...user, token })
 }
 
 async function listCourses(): Promise<Course[]> {
@@ -953,4 +1085,105 @@ function uniqueId(desired: string, taken: Set<string>): string {
     id = `${id}-${n}`
   }
   return id
+}
+
+// ---------------- универсальное хранилище контента ----------------
+// События, материалы, опросники, разделы/темы форума и уведомления хранятся в
+// общей таблице content, ключ — (collection, id). Сиды переносятся в БД при
+// первом обращении к пустой коллекции.
+
+type WithId = { id: string; title?: string }
+
+async function contentList<T extends WithId>(collection: string, seed: T[]): Promise<T[]> {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const [{ count }] = await sql`SELECT COUNT(*)::int AS count FROM content WHERE collection = ${collection}`
+  if (Number(count) === 0 && seed.length > 0) {
+    for (let i = 0; i < seed.length; i += 1) {
+      await sql`
+        INSERT INTO content (collection, id, data, sort_order)
+        VALUES (${collection}, ${seed[i].id}, ${JSON.stringify(seed[i])}::jsonb, ${i})
+        ON CONFLICT (collection, id) DO NOTHING
+      `
+    }
+  }
+  const rows = await sql`SELECT data FROM content WHERE collection = ${collection} ORDER BY sort_order ASC`
+  return rows.map((r) => r.data as T)
+}
+
+async function contentGet<T extends WithId>(collection: string, id: string): Promise<T | undefined> {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const rows = await sql`SELECT data FROM content WHERE collection = ${collection} AND id = ${id} LIMIT 1`
+  return rows[0] ? (rows[0].data as T) : undefined
+}
+
+async function contentCreate<T extends WithId>(
+  collection: string,
+  item: T,
+  fallbackSlug: string,
+  prepend = false,
+): Promise<T> {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const taken = await sql`SELECT id FROM content WHERE collection = ${collection}`
+  const ids = new Set(taken.map((r) => r.id as string))
+  const desired = (item.id && String(item.id).trim()) || slugify(item.title ?? fallbackSlug) || fallbackSlug
+  const id = uniqueId(desired, ids)
+  const created = { ...item, id }
+  const [{ pos }] = prepend
+    ? await sql`SELECT COALESCE(MIN(sort_order), 0) - 1 AS pos FROM content WHERE collection = ${collection}`
+    : await sql`SELECT COALESCE(MAX(sort_order), 0) + 1 AS pos FROM content WHERE collection = ${collection}`
+  await sql`
+    INSERT INTO content (collection, id, data, sort_order)
+    VALUES (${collection}, ${id}, ${JSON.stringify(created)}::jsonb, ${Number(pos)})
+  `
+  return created
+}
+
+async function contentUpdate<T extends WithId>(
+  collection: string,
+  id: string,
+  patch: Record<string, unknown>,
+): Promise<T> {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const rows = await sql`SELECT data FROM content WHERE collection = ${collection} AND id = ${id} LIMIT 1`
+  const current = (rows[0]?.data as T) ?? ({ id } as T)
+  const next = { ...current, ...patch, id } as T
+  await sql`
+    INSERT INTO content (collection, id, data, sort_order)
+    VALUES (${collection}, ${id}, ${JSON.stringify(next)}::jsonb, 0)
+    ON CONFLICT (collection, id) DO UPDATE SET data = ${JSON.stringify(next)}::jsonb, updated_at = NOW()
+  `
+  return next
+}
+
+async function contentRemove(collection: string, id: string): Promise<void> {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await sql`DELETE FROM content WHERE collection = ${collection} AND id = ${id}`
+}
+
+async function contentReset<T extends WithId>(collection: string, seed: T[]): Promise<T[]> {
+  const sql = getSql()
+  await ensureSchema(sql)
+  await sql`DELETE FROM content WHERE collection = ${collection}`
+  for (let i = 0; i < seed.length; i += 1) {
+    await sql`
+      INSERT INTO content (collection, id, data, sort_order)
+      VALUES (${collection}, ${seed[i].id}, ${JSON.stringify(seed[i])}::jsonb, ${i})
+    `
+  }
+  return seed
+}
+
+/** Разделы форума со счётчиком тем, посчитанным по фактическим темам. */
+async function forumSectionsWithCounts(): Promise<ForumSection[]> {
+  const sections = await contentList<ForumSection>('forum_sections', seedForumSections)
+  const topics = await contentList<ForumTopic>('forum_topics', seedForumTopics)
+  return sections.map((s) => ({
+    ...s,
+    topicsCount: topics.filter((t) => t.sectionId === s.id).length,
+  }))
 }
