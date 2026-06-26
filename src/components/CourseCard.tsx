@@ -22,7 +22,6 @@ interface CourseCardProps {
 function CourseCover({ course }: { course: Course }) {
   // Океан — для интерактива/чтения (SCORM, лонгрид), Нефть — для видео-программ
   const isOcean = course.format === 'scorm' || course.format === 'longread'
-  const monogram = course.title.trim().charAt(0).toUpperCase()
   const number = courses.findIndex((c) => c.id === course.id) + 1
 
   return (
@@ -36,9 +35,9 @@ function CourseCover({ course }: { course: Course }) {
       {/* тонкая академическая рамка */}
       <span className="pointer-events-none absolute inset-4 border border-wisdom/20" />
 
-      {/* монограмма дисциплины */}
-      <span className="relative font-serif text-[3.5rem] font-light leading-none text-wisdom">
-        {monogram}
+      {/* название программы на брендовой плоскости */}
+      <span className="relative line-clamp-3 px-10 text-center font-serif text-[1.35rem] font-light leading-tight text-wisdom">
+        {course.title}
       </span>
 
       {/* формат */}
