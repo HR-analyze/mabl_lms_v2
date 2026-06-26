@@ -11,8 +11,11 @@ import type { Course, CourseFormat, CourseLevel } from '@/types'
 const FORMATS: CourseFormat[] = ['video', 'longread', 'scorm']
 const LEVELS: CourseLevel[] = ['Базовый', 'Продвинутый', 'Экспертный']
 
-const fieldBase =
-  'w-full rounded-token border border-ink-20 bg-wisdom px-4 py-3 text-neft transition-colors focus:border-ocean focus:outline-none'
+// Базовая форма поля без ширины и горизонтальных отступов — их задаём по месту,
+// чтобы compact-поля (длительность + единица) не конфликтовали с w-full/flex.
+const fieldShape =
+  'rounded-token border border-ink-20 bg-wisdom py-3 text-neft transition-colors focus:border-ocean focus:outline-none'
+const fieldBase = cn('w-full px-4', fieldShape)
 
 /** Пустой черновик новой программы. */
 function blankCourse(): Course {
@@ -189,7 +192,7 @@ export default function AdminCourseEditPage() {
                 type="number"
                 min={0}
                 step={durationUnit === 'minutes' ? 5 : 1}
-                className={cn(fieldBase, 'flex-1')}
+                className={cn(fieldShape, 'min-w-0 flex-1 px-3')}
                 value={String(
                   durationUnit === 'minutes'
                     ? Math.round(form.durationHours * 60)
@@ -201,7 +204,7 @@ export default function AdminCourseEditPage() {
                 }}
               />
               <select
-                className={cn(fieldBase, 'w-28')}
+                className={cn(fieldShape, 'w-24 px-2')}
                 value={durationUnit}
                 onChange={(e) => setDurationUnit(e.target.value as 'hours' | 'minutes')}
               >
