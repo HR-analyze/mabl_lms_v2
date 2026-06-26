@@ -29,6 +29,19 @@ export function formatPrice(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(value) + ' ₽'
 }
 
+/** true, если курс бесплатный. */
+export function isFree(value: number): boolean {
+  return value === 0
+}
+
+/**
+ * Название для показа: подчёркивания (часто приходят из имён SCORM-пакетов)
+ * заменяем на пробелы и схлопываем повторяющиеся пробелы.
+ */
+export function displayTitle(title: string): string {
+  return title.replace(/_+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 /**
  * Длительность курса в часах → человекочитаемая строка.
  * Дробные часы показываются с минутами: 0.5 → «30 мин», 1.5 → «1 ч 30 мин».
