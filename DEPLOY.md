@@ -185,7 +185,11 @@ psql "$DATABASE_URL" -c "SELECT count(*) FROM users;"
 ```
 
 Ожидаем таблицы `courses`, `users`, `news`, `news_comments`, `news_reactions`,
-`participants`, `orders`, `content`.
+`participants`, `orders`, `content`, `course_progress`.
+
+> `course_progress` (прогресс обучения слушателей) появилась позже остальных.
+> В старом дампе её нет — приложение создаст её само при первом запросе
+> (`ensureSchema`), отдельная миграция не нужна.
 
 > Если дампа нет и база создаётся с нуля — пропустите этот шаг: приложение само
 > создаст схему при первом запуске (`POST /api/setup?secret=$SETUP_SECRET`).

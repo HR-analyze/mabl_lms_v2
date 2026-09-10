@@ -1,5 +1,6 @@
 import { authApi } from './auth'
 import { coursesApi } from './courses'
+import { progressApi } from './progress'
 import { usersApi } from './users'
 import { ordersApi } from './orders'
 import { applicationsApi } from './applications'
@@ -22,6 +23,7 @@ import { paymentsApi } from './payments'
 export const api = {
   auth: authApi,
   courses: coursesApi,
+  progress: progressApi,
   users: usersApi,
   orders: ordersApi,
   applications: applicationsApi,
