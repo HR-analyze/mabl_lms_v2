@@ -57,6 +57,8 @@ import {
   deleteKeys,
   getObject,
   isStorageConfigured,
+  storageBackend,
+  storageDescription,
   keyFromUrl,
   listKeys,
   publicUrlFor,
@@ -2411,7 +2413,8 @@ async function diagnoseScormPackage(id: string) {
   const started = Date.now()
   const report = {
     id,
-    mode: isStorageConfigured() ? 'object-storage' : 'none',
+    mode: isStorageConfigured() ? (storageBackend() === 'disk' ? 'диск ВМ' : 'object-storage') : 'none',
+    storage: storageDescription(),
     fileCount: 0,
     okCount: 0,
     failed: [] as Array<{ path: string; sizeKb: number; via: string; status: number | string }>,
@@ -2524,10 +2527,7 @@ async function serveScormFile(id: string, rel: string, req: ApiRequest, res: Api
   }
 
   if (!isStorageConfigured()) {
-    return scormErrorPage(
-      res,
-      'Файловое хранилище не настроено. Администратору: задайте переменные S3_BUCKET, S3_ACCESS_KEY_ID и S3_SECRET_ACCESS_KEY и перезапустите сервис.',
-    )
+    return scormErrorPage(res, `Файловое хранилище не настроено. Администратору: ${storageSetupHint()}`)
   }
 
   const ok = await streamStorageObject(scormKey(id, rel), req, res, { contentType: scormMime(rel) })
@@ -2554,6 +2554,26 @@ export async function serveStorageFile(key: string, req: ApiRequest, res: ApiRes
 
 /** Потолок размера одного загружаемого файла (МБ). */
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 256)
+
+/**
+ * Что администратору сделать, чтобы хранилище заработало.
+ *
+ * Текст зависит от выбранного бэкенда: советовать ключи S3 тому, кто хранит
+ * файлы на диске, бессмысленно — и наоборот.
+ */
+function storageSetupHint(): string {
+  if (storageBackend() === 'disk') {
+    return (
+      'каталог хранилища недоступен для записи. Проверьте права на STORAGE_DIR ' +
+      '(по умолчанию — подкаталог storage в рабочем каталоге сервиса) и перезапустите сервис.'
+    )
+  }
+  return (
+    'задан S3_BUCKET, но не заданы ключи доступа. Добавьте S3_ACCESS_KEY_ID и ' +
+    'S3_SECRET_ACCESS_KEY и перезапустите сервис — либо уберите S3_BUCKET, ' +
+    'чтобы файлы хранились на диске машины.'
+  )
+}
 
 /** Безопасный ключ объекта: без «..», ведущих слэшей и обратных слэшей. */
 function safeKey(prefix: string, raw: string): string {
@@ -2583,10 +2603,7 @@ function safeKey(prefix: string, raw: string): string {
 async function storageUpload(prefix: string, req: ApiRequest, res: ApiResponse) {
   try {
     if (!isStorageConfigured()) {
-      return res.status(503).json({
-        message:
-          'Файловое хранилище не настроено: задайте S3_BUCKET, S3_ACCESS_KEY_ID и S3_SECRET_ACCESS_KEY в окружении сервиса и перезапустите его.',
-      })
+      return res.status(503).json({ message: `Файловое хранилище не настроено: ${storageSetupHint()}` })
     }
 
     const rawKey = req.query.key
@@ -2633,6 +2650,8 @@ async function uploadPreflight(req: ApiRequest) {
     blob: storage,
     storage,
     mode: storage ? ('server' as const) : undefined,
+    /** Куда именно пишутся файлы — диск этой машины или S3-совместимое хранилище. */
+    backend: storageBackend(),
     maxUploadMb: MAX_UPLOAD_MB,
     // Имена (без значений) переменных хранилища — чтобы отличить «не настроено»
     // от «ключ задан под другим именем».
