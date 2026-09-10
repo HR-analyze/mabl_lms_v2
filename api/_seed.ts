@@ -255,6 +255,24 @@ export async function ensureSchema(sql: Sql): Promise<void> {
     )
   `
   await sql`CREATE INDEX IF NOT EXISTS idx_course_progress_user ON course_progress (user_id, course_id)`
+
+  // Доступ к программе, выданный администратором вручную.
+  //
+  // Нужен внутренним слушателям — сотрудникам и тестировщикам, которые должны
+  // видеть материалы, ничего не покупая. Отдельная таблица, а не фиктивный
+  // «оплаченный» заказ: иначе выручка и отчёты по продажам считали бы служебные
+  // выдачи наравне с настоящими покупками.
+  await sql`
+    CREATE TABLE IF NOT EXISTS course_grants (
+      user_id TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      granted_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, course_id)
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS idx_course_grants_course ON course_grants (course_id)`
 }
 
 /** Инициализация: схема + стартовый администратор (без перезаписи существующих данных). */
