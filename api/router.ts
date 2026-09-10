@@ -568,6 +568,16 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       return res.status(204).end()
     }
 
+    // ---------- ADMIN · ВЫДАННЫЙ ДОСТУП ----------
+    // Программы, открытые слушателю без оплаты (сотрудники, тестировщики).
+    // Права администратора проверены общим гардом: путь начинается с admin/.
+    if (path === 'admin/grants' && method === 'GET') {
+      return await listGrants(res)
+    }
+    if (segments[0] === 'admin' && segments[1] === 'grants' && segments.length === 3) {
+      if (method === 'PUT') return await replaceGrants(segments[2], req, res)
+    }
+
     // ---------- ADMIN · УЧАСТНИКИ (БД) ----------
     if (path === 'admin/users' && method === 'GET') return res.json(await listParticipants())
     if (path === 'admin/users' && method === 'POST') return await createParticipant(req, res)
@@ -1145,8 +1155,9 @@ async function updateCourse(id: string, req: ApiRequest, res: ApiResponse) {
 async function deleteCourse(id: string, res: ApiResponse) {
   const sql = getSql()
   await sql`DELETE FROM courses WHERE id = ${id}`
-  // Прогресс удалённой программы никому не нужен и не на что ссылается.
+  // Прогресс и выданные доступы удалённой программы не на что ссылаются.
   await sql`DELETE FROM course_progress WHERE course_id = ${id}`
+  await sql`DELETE FROM course_grants WHERE course_id = ${id}`
   return res.status(204).end()
 }
 
@@ -1542,13 +1553,92 @@ async function accessibleCourseIdsFor(userId: string): Promise<string[]> {
 
   const sql = getSql()
   await ensureSchema(sql)
+  // Доступ даёт либо оплаченный заказ, либо выдача администратором вручную
+  // (внутренние слушатели: сотрудники и тестировщики).
   const rows = await sql`
     SELECT data->>'courseId' AS course_id FROM orders
     WHERE data->>'userId' = ${userId} AND data->>'status' = 'paid'
+    UNION
+    SELECT course_id FROM course_grants WHERE user_id = ${userId}
   `
   const ids = Array.from(new Set(rows.map((r) => r.course_id as string).filter(Boolean)))
   accessCache.set(userId, { expires: Date.now() + ACCESS_TTL_MS, ids })
   return ids
+}
+
+// ---------------- выданный доступ ----------------
+
+/** Программа, открытая слушателю вручную. */
+interface CourseGrant {
+  userId: string
+  courseId: string
+  /** Зачем выдан — «тестировщик», «преподаватель» и т. п. */
+  note: string
+  createdAt: string
+}
+
+function rowToGrant(row: SqlRow): CourseGrant {
+  return {
+    userId: row.user_id as string,
+    courseId: row.course_id as string,
+    note: (row.note as string) ?? '',
+    createdAt: new Date(row.created_at as string | Date).toISOString(),
+  }
+}
+
+/** Все выдачи — админке нужно показать их рядом со списком аккаунтов. */
+async function listGrants(res: ApiResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const rows = await sql`
+    SELECT user_id, course_id, note, created_at FROM course_grants
+    ORDER BY created_at DESC
+  `
+  return res.json({ grants: rows.map(rowToGrant) })
+}
+
+/**
+ * Заменить набор программ, открытых слушателю.
+ *
+ * Тело: { courseIds: string[], note?: string }. Именно замена, а не добавление:
+ * админка присылает полный набор отмеченных программ, и снятая галочка должна
+ * доступ забирать.
+ */
+async function replaceGrants(userId: string, req: ApiRequest, res: ApiResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+
+  const account = await sql`SELECT id FROM users WHERE id = ${userId} LIMIT 1`
+  if (!account[0]) return res.status(404).json({ message: 'Аккаунт не найден' })
+
+  const body = parseBody(req)
+  const requested = Array.isArray(body.courseIds) ? body.courseIds : []
+  const note = typeof body.note === 'string' ? body.note.slice(0, 200) : ''
+
+  // Выдать доступ можно только к существующей программе: иначе опечатка в id
+  // молча создала бы запись, которая ничего не открывает.
+  const known = new Set((await listCourses()).map((c) => c.id))
+  const courseIds = Array.from(
+    new Set(requested.filter((id): id is string => typeof id === 'string' && known.has(id))),
+  )
+
+  const grantedBy = verifyToken(bearer(req))?.id ?? null
+  await sql`DELETE FROM course_grants WHERE user_id = ${userId}`
+  for (const courseId of courseIds) {
+    await sql`
+      INSERT INTO course_grants (user_id, course_id, note, granted_by)
+      VALUES (${userId}, ${courseId}, ${note}, ${grantedBy})
+    `
+  }
+
+  // Доступы кэшируются на полминуты; без сброса администратор решил бы, что
+  // выдача не сработала, и нажал бы ещё раз.
+  accessCache.delete(userId)
+
+  const rows = await sql`
+    SELECT user_id, course_id, note, created_at FROM course_grants WHERE user_id = ${userId}
+  `
+  return res.json({ userId, grants: rows.map(rowToGrant) })
 }
 
 /** Бесплатная программа открыта любому вошедшему слушателю. */
@@ -2109,6 +2199,7 @@ async function dbStatus(res: ApiResponse) {
   const [{ count: coursesCount }] = await sql`SELECT COUNT(*)::int AS count FROM courses`
   const [{ count: usersCount }] = await sql`SELECT COUNT(*)::int AS count FROM users`
   const [{ count: progressCount }] = await sql`SELECT COUNT(*)::int AS count FROM course_progress`
+  const [{ count: grantsCount }] = await sql`SELECT COUNT(*)::int AS count FROM course_grants`
   const users = await sql`
     SELECT id, name, email, role, kind, created_at
     FROM users ORDER BY created_at ASC
@@ -2118,6 +2209,7 @@ async function dbStatus(res: ApiResponse) {
       { name: 'courses', label: 'Программы', rows: Number(coursesCount) },
       { name: 'users', label: 'Аккаунты', rows: Number(usersCount) },
       { name: 'course_progress', label: 'Прогресс обучения', rows: Number(progressCount) },
+      { name: 'course_grants', label: 'Выданные доступы', rows: Number(grantsCount) },
     ],
     users: users.map((u) => ({
       id: u.id,
@@ -2199,9 +2291,12 @@ async function updateDbUser(id: string, req: ApiRequest, res: ApiResponse) {
 async function deleteDbUser(id: string, res: ApiResponse) {
   const sql = getSql()
   await sql`DELETE FROM users WHERE id = ${id}`
-  // Вместе с аккаунтом уходит и его обучение: иначе строки прогресса остаются
-  // висеть без владельца и достанутся следующему аккаунту с тем же id.
+  // Вместе с аккаунтом уходит и его обучение, и выданные ему доступы: иначе
+  // строки остаются висеть без владельца и достанутся следующему аккаунту с
+  // тем же id.
   await sql`DELETE FROM course_progress WHERE user_id = ${id}`
+  await sql`DELETE FROM course_grants WHERE user_id = ${id}`
+  accessCache.delete(id)
   return res.status(204).end()
 }
 
