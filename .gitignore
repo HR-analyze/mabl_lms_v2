@@ -6,3 +6,9 @@ dist-ssr
 .DS_Store
 *.log
 .vite
+
+# Сборка сервера
+dist-server
+
+# Файлы хранилища (SCORM-пакеты и материалы), когда они лежат на диске ВМ.
+storage

@@ -7,7 +7,10 @@ export type { ScormPackage } from '@/lib/scormStore'
 /** Результат серверной диагностики пакета (см. api/router.ts). */
 export interface ScormDiagnostics {
   id: string
-  mode: 'token' | 'oidc' | 'none'
+  /** Как проверялся доступ к файлам: 'none' — хранилище не настроено. */
+  mode: string
+  /** Где лежат файлы — человекочитаемо (диск ВМ или имя бакета). */
+  storage?: string
   fileCount: number
   okCount: number
   failed: Array<{ path: string; sizeKb: number; via: string; status: number | string }>

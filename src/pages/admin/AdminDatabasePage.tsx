@@ -5,7 +5,9 @@ import { Badge } from '@/components/ui/Badge'
 import { AdminPageHeader, StatCard } from '@/components/admin/AdminUI'
 import { api } from '@/api'
 import type { DbStatus, DbUser, DemoRow, MailStatus } from '@/api/database'
-import { cn } from '@/lib/utils'
+import type { CourseGrant } from '@/api/grants'
+import { useCourses } from '@/context/CoursesContext'
+import { cn, displayTitle } from '@/lib/utils'
 
 type Notice = { tone: 'ok' | 'err'; text: string } | null
 
@@ -15,6 +17,9 @@ const inputClass =
 /** Управление базой данных: статус таблиц, аккаунты, обслуживание. */
 export default function AdminDatabasePage() {
   const [status, setStatus] = useState<DbStatus | null>(null)
+  // Выданные доступы грузятся отдельно от статуса базы: они нужны каждой
+  // строке аккаунта, а тянуть их по одной на строку — лишние запросы.
+  const [grants, setGrants] = useState<CourseGrant[]>([])
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState<Notice>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -25,6 +30,8 @@ export default function AdminDatabasePage() {
     setLoading(true)
     try {
       setStatus(await api.database.status())
+      // Сбой выдач не должен прятать список аккаунтов — показываем что есть.
+      setGrants(await api.grants.list().catch(() => []))
     } catch (e) {
       setNotice({ tone: 'err', text: e instanceof Error ? e.message : 'Ошибка загрузки' })
     } finally {
@@ -100,7 +107,13 @@ export default function AdminDatabasePage() {
           ) : (status?.users.length ?? 0) > 0 ? (
             <ul className="divide-y divide-ink-10">
               {status!.users.map((u) => (
-                <UserRow key={u.id} user={u} onChanged={refresh} setNotice={setNotice} />
+                <UserRow
+                  key={u.id}
+                  user={u}
+                  grantedCourseIds={grants.filter((g) => g.userId === u.id).map((g) => g.courseId)}
+                  onChanged={refresh}
+                  setNotice={setNotice}
+                />
               ))}
             </ul>
           ) : (
@@ -310,14 +323,18 @@ function MaintenanceRow({
 
 function UserRow({
   user,
+  grantedCourseIds,
   onChanged,
   setNotice,
 }: {
   user: DbUser
+  /** Программы, уже открытые этому аккаунту вручную. */
+  grantedCourseIds: string[]
   onChanged: () => Promise<void>
   setNotice: (n: Notice) => void
 }) {
   const [editing, setEditing] = useState(false)
+  const [grantsOpen, setGrantsOpen] = useState(false)
   const [name, setName] = useState(user.name)
   const [kind, setKind] = useState<DbUser['kind']>(user.kind)
   const [password, setPassword] = useState('')
@@ -395,6 +412,18 @@ function UserRow({
       <p className="truncate text-[0.82rem] text-ink-60 md:col-span-4">{user.email}</p>
       <p className="truncate text-[0.82rem] text-ink-60 md:col-span-2">{user.role}</p>
       <div className="flex gap-3 md:col-span-2 md:justify-end">
+        {/* Администратору материалы открыты и так — выдавать ему нечего. */}
+        {user.kind !== 'admin' && (
+          <button
+            onClick={() => setGrantsOpen((v) => !v)}
+            className={cn(
+              'text-[0.72rem] font-semibold uppercase tracking-wide hover:text-oceanc-80',
+              grantedCourseIds.length > 0 ? 'text-ocean' : 'text-ink-50',
+            )}
+          >
+            Доступ{grantedCourseIds.length > 0 ? ` · ${grantedCourseIds.length}` : ''}
+          </button>
+        )}
         <button
           onClick={() => setEditing(true)}
           className="text-[0.72rem] font-semibold uppercase tracking-wide text-ocean hover:text-oceanc-80"
@@ -408,7 +437,121 @@ function UserRow({
           Удалить
         </button>
       </div>
+      {grantsOpen && (
+        <div className="md:col-span-12">
+          <GrantsPanel
+            user={user}
+            grantedCourseIds={grantedCourseIds}
+            onSaved={async () => {
+              setGrantsOpen(false)
+              await onChanged()
+            }}
+            setNotice={setNotice}
+          />
+        </div>
+      )}
     </li>
+  )
+}
+
+/**
+ * Выдача доступа к программам без оплаты — для внутренних слушателей
+ * (сотрудников, преподавателей, тестировщиков).
+ *
+ * Отмеченные программы заменяют прежний набор целиком, поэтому снятая галочка
+ * доступ забирает. Заказы при этом не создаются: служебная выдача не должна
+ * попадать в выручку.
+ */
+function GrantsPanel({
+  user,
+  grantedCourseIds,
+  onSaved,
+  setNotice,
+}: {
+  user: DbUser
+  grantedCourseIds: string[]
+  onSaved: () => Promise<void>
+  setNotice: (n: Notice) => void
+}) {
+  const { courses, loading } = useCourses()
+  const [selected, setSelected] = useState<string[]>(grantedCourseIds)
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const toggle = (id: string) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await api.grants.replace(user.id, selected, note.trim())
+      setNotice({
+        tone: 'ok',
+        text: selected.length
+          ? `«${user.name}» открыт доступ к программам: ${selected.length}.`
+          : `У «${user.name}» доступ к программам отозван.`,
+      })
+      await onSaved()
+    } catch (e) {
+      setNotice({ tone: 'err', text: e instanceof Error ? e.message : 'Не удалось сохранить доступ' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-token border border-ink-10 bg-ink-5 px-4 py-4">
+      <p className="text-[0.72rem] uppercase tracking-wide text-ink-60">
+        Доступ без оплаты — {user.email}
+      </p>
+      {loading && courses.length === 0 ? (
+        <p className="mt-3 text-sm text-ink-60">Загружаем программы…</p>
+      ) : courses.length === 0 ? (
+        <p className="mt-3 text-sm text-ink-60">Программ пока нет.</p>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {courses.map((course) => (
+            <li key={course.id}>
+              <label className="flex cursor-pointer items-center gap-2.5 text-sm text-neft">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(course.id)}
+                  onChange={() => toggle(course.id)}
+                  className="h-4 w-4 accent-[#1f4fd8]"
+                />
+                <span className="truncate">{displayTitle(course.title)}</span>
+                {course.price > 0 && (
+                  <span className="shrink-0 text-[0.72rem] text-ink-50">
+                    {course.price} ₽
+                  </span>
+                )}
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      <input
+        className={cn(inputClass, 'mt-3')}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Пометка: тестировщик, преподаватель, сотрудник…"
+      />
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button size="sm" disabled={saving} onClick={() => void save()}>
+          {saving ? 'Сохраняем…' : 'Сохранить доступ'}
+        </Button>
+        {selected.length > 0 && (
+          <Button size="sm" variant="ghost" disabled={saving} onClick={() => setSelected([])}>
+            Снять все
+          </Button>
+        )}
+      </div>
+      <p className="mt-3 text-[0.78rem] leading-relaxed text-ink-50">
+        Отмеченные программы открываются слушателю сразу и без оплаты. Заказ при этом не
+        создаётся, в выручку такая выдача не попадает. Доступ появится у слушателя в течение
+        полуминуты.
+      </p>
+    </div>
   )
 }
 

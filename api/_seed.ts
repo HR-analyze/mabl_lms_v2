@@ -1,12 +1,12 @@
 import bcrypt from 'bcryptjs'
-import type { NeonQueryFunction } from '@neondatabase/serverless'
+import type { Sql } from './_db.js'
 
 /**
  * Совместно используемая логика инициализации БД (схема + стартовый админ).
  * Вызывается из api/setup.ts (по секрету) и из админ-панели (POST /api/admin/db/init).
  */
 
-type Sql = NeonQueryFunction<false, false>
+
 
 /**
  * Стартовый аккаунт администратора. Создаётся только если такого e-mail в базе
@@ -232,6 +232,47 @@ export async function ensureSchema(sql: Sql): Promise<void> {
     )
   `
   await sql`CREATE INDEX IF NOT EXISTS idx_content_collection ON content (collection, sort_order)`
+
+  // Прогресс обучения — СВОЙ у каждого слушателя.
+  //
+  // Раньше прогресс лежал прямо в записи программы (courses.data.progress и
+  // lesson.completed). Запись одна на всех, поэтому прогресс одного слушателя
+  // затирал прогресс остальных, а сохранить его мог только администратор:
+  // единственный путь записи, PUT /courses/:id, закрыт админским гардом.
+  //
+  // Здесь одна строка на тройку «слушатель + программа + урок». В data лежит
+  // и посчитанный процент, и сырое состояние SCORM (cmi.*), включая
+  // cmi.suspend_data — благодаря ему пакет продолжается с того же места на
+  // любом устройстве, а не только в браузере, где обучение начиналось.
+  await sql`
+    CREATE TABLE IF NOT EXISTS course_progress (
+      user_id TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      lesson_id TEXT NOT NULL,
+      data JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, course_id, lesson_id)
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS idx_course_progress_user ON course_progress (user_id, course_id)`
+
+  // Доступ к программе, выданный администратором вручную.
+  //
+  // Нужен внутренним слушателям — сотрудникам и тестировщикам, которые должны
+  // видеть материалы, ничего не покупая. Отдельная таблица, а не фиктивный
+  // «оплаченный» заказ: иначе выручка и отчёты по продажам считали бы служебные
+  // выдачи наравне с настоящими покупками.
+  await sql`
+    CREATE TABLE IF NOT EXISTS course_grants (
+      user_id TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      granted_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, course_id)
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS idx_course_grants_course ON course_grants (course_id)`
 }
 
 /** Инициализация: схема + стартовый администратор (без перезаписи существующих данных). */

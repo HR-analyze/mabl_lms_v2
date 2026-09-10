@@ -1,4 +1,4 @@
-import type { NeonQueryFunction } from '@neondatabase/serverless'
+import type { Sql } from './_db.js'
 
 /**
  * Разовая уборка демо-данных из БД.
@@ -13,7 +13,7 @@ import type { NeonQueryFunction } from '@neondatabase/serverless'
  * (`findDemoRows`) и лишь затем удалять (`purgeDemoRows`).
  */
 
-type Sql = NeonQueryFunction<false, false>
+
 
 /** id бывших демо-записей по таблицам. */
 const DEMO_IDS = {
@@ -108,6 +108,8 @@ export async function purgeDemoRows(sql: Sql): Promise<{ deleted: number }> {
   const before = await findDemoRows(sql)
 
   await sql`DELETE FROM courses WHERE id = ANY(${DEMO_IDS.courses})`
+  // Прогресс по демо-программам уходит вместе с ними.
+  await sql`DELETE FROM course_progress WHERE course_id = ANY(${DEMO_IDS.courses})`
   await sql`DELETE FROM participants WHERE id = ANY(${DEMO_IDS.participants})`
   await sql`DELETE FROM orders WHERE id = ANY(${DEMO_IDS.orders})`
   await sql`
@@ -115,6 +117,12 @@ export async function purgeDemoRows(sql: Sql): Promise<{ deleted: number }> {
   `
   await sql`DELETE FROM content WHERE collection = 'materials' AND id = ANY(${DEMO_IDS.materials})`
   await sql`DELETE FROM content WHERE collection = 'surveys' AND id = ANY(${DEMO_IDS.surveys})`
+  // Сначала обучение демо-слушателя, потом сам аккаунт: после удаления
+  // строки users его id из базы уже не достать.
+  await sql`
+    DELETE FROM course_progress
+    WHERE user_id IN (SELECT id FROM users WHERE email = ${DEMO_USER_EMAIL})
+  `
   await sql`DELETE FROM users WHERE email = ${DEMO_USER_EMAIL}`
 
   return { deleted: before.length }

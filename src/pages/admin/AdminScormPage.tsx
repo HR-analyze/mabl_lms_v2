@@ -18,7 +18,7 @@ function DiagnosticsPanel({ report }: { report: ScormDiagnostics }) {
     <div className="mt-2 rounded-token border border-ink-10 bg-ink-5 px-4 py-3 text-sm">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-ink-70">
         <span>
-          Авторизация хранилища: <b>{report.mode === 'none' ? 'нет' : report.mode.toUpperCase()}</b>
+          Хранилище: <b>{report.mode === 'none' ? 'не настроено' : (report.storage ?? report.mode)}</b>
         </span>
         <span>
           Файлов: <b>{report.fileCount}</b>, доступно: <b>{report.okCount}</b>, ошибок:{' '}

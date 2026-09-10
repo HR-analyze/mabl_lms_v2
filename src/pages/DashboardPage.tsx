@@ -9,6 +9,7 @@ import { api } from '@/api'
 import { useAsync } from '@/hooks/useAsync'
 import { useCourses } from '@/context/CoursesContext'
 import { usePurchases } from '@/context/PurchaseContext'
+import { useProgress } from '@/context/ProgressContext'
 import { useNotifications } from '@/context/NotificationsContext'
 import { useAuth } from '@/context/AuthContext'
 import { formatDateTime } from '@/lib/utils'
@@ -25,6 +26,7 @@ export default function DashboardPage() {
   const { user, isAdmin } = useAuth()
   const { courses } = useCourses()
   const { canAccessCourse } = usePurchases()
+  const { courseProgress } = useProgress()
   const { items } = useNotifications()
   const { data: eventsData } = useAsync(() => api.events.list(), [])
 
@@ -32,8 +34,10 @@ export default function DashboardPage() {
   if (isAdmin) return <Navigate to="/admin" replace />
 
   const myCourses = courses.filter((c) => canAccessCourse(c))
+  // Общий прогресс считается по личным отметкам слушателя, а не по полю
+  // progress записи программы: то поле одно на всех (см. ProgressContext).
   const overall = myCourses.length
-    ? Math.round(myCourses.reduce((sum, c) => sum + c.progress, 0) / myCourses.length)
+    ? Math.round(myCourses.reduce((sum, c) => sum + courseProgress(c), 0) / myCourses.length)
     : 0
 
   const upcoming = [...(eventsData ?? [])]
@@ -144,7 +148,7 @@ export default function DashboardPage() {
                         Открыть
                       </Button>
                     </div>
-                    <ProgressBar value={course.progress} showLabel className="mt-4" />
+                    <ProgressBar value={courseProgress(course)} showLabel className="mt-4" />
                   </CardBody>
                 </Card>
               ))
