@@ -2,6 +2,7 @@ import type { ApiRequest, ApiResponse } from './_http.js'
 import crypto from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { getSql } from './_db.js'
+import type { SqlRow } from './_db.js'
 import { mailConfigProblems, mailTransport, passwordResetMessage, sendMail } from './_mail.js'
 import {
   CODE_TTL_MIN,
@@ -159,6 +160,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     // Заявку на поступление оставляет любой посетитель страницы программы —
     // авторизация здесь не требуется по определению.
     path === 'applications' ||
+    // Прогресс обучения записывает сам слушатель: права проверяются внутри
+    // обработчика по токену сессии из заголовка Authorization. Админский гард
+    // здесь неуместен — иначе обучение не сможет сохранить ни один слушатель.
+    (segments[0] === 'me' && segments[1] === 'progress') ||
     (segments[0] === 'news' && (segments[2] === 'comments' || segments[2] === 'reactions'))
   const needsAdmin = segments[0] === 'admin' || (isMutation && !isPublicMutation)
   if (needsAdmin && !requireAdmin(req, res)) return
@@ -259,6 +264,22 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     // Программы, открытые текущему пользователю: только по оплаченным заказам.
     if (path === 'me/courses' && method === 'GET') {
       return res.json({ courseIds: await listAccessibleCourseIds(req) })
+    }
+
+    // ---------- ПРОГРЕСС ОБУЧЕНИЯ (свой у каждого слушателя) ----------
+    // Сводка по всем программам — без состояния SCORM: оно тяжёлое (в
+    // cmi.suspend_data лежит вся история просмотра) и нужно только на странице
+    // самой программы.
+    if (path === 'me/progress' && method === 'GET') {
+      return await listMyProgress(req, res)
+    }
+    if (segments[0] === 'me' && segments[1] === 'progress' && segments.length === 3) {
+      // Прогресс по одной программе — вместе с cmi.*, чтобы пакет продолжился
+      // с того места, где слушатель остановился (в том числе на другом устройстве).
+      if (method === 'GET') return await getCourseProgress(segments[2], req, res)
+    }
+    if (segments[0] === 'me' && segments[1] === 'progress' && segments.length === 4) {
+      if (method === 'PUT') return await saveLessonProgress(segments[2], segments[3], req, res)
     }
 
     // ---------- COURSES (БД) ----------
@@ -1122,6 +1143,8 @@ async function updateCourse(id: string, req: ApiRequest, res: ApiResponse) {
 async function deleteCourse(id: string, res: ApiResponse) {
   const sql = getSql()
   await sql`DELETE FROM courses WHERE id = ${id}`
+  // Прогресс удалённой программы никому не нужен и не на что ссылается.
+  await sql`DELETE FROM course_progress WHERE course_id = ${id}`
   return res.status(204).end()
 }
 
@@ -1531,6 +1554,182 @@ function isFreeCourse(course: Pick<Course, 'price'>): boolean {
   return !course.price || course.price <= 0
 }
 
+// ---------------- прогресс обучения ----------------
+
+/**
+ * Предел на сохраняемое состояние SCORM одного урока.
+ *
+ * Стандарт SCORM 1.2 отводит под cmi.suspend_data 4096 символов, но авторские
+ * средства (iSpring в том числе) этот предел регулярно превышают, а обрезать
+ * состояние нельзя: пакет не сможет возобновить прохождение. Поэтому предел
+ * свой и щедрый — он защищает базу от заведомого мусора, а не соблюдает букву
+ * стандарта.
+ */
+const CMI_MAX_CHARS = 256 * 1024
+
+/** Прогресс одного урока у одного слушателя. */
+interface LessonProgress {
+  courseId: string
+  lessonId: string
+  /** Процент прохождения урока, 0–100. */
+  progress: number
+  /** Последний cmi.core.lesson_status от пакета. */
+  status: string
+  completed: boolean
+  updatedAt: string
+  /** Состояние SCORM-сеанса (cmi.*) — только в выдаче по конкретной программе. */
+  cmi?: Record<string, string>
+}
+
+/** Данные строки course_progress, как они лежат в JSONB. */
+interface StoredProgress {
+  progress: number
+  status: string
+  completed: boolean
+  cmi: Record<string, string>
+}
+
+function rowToProgress(row: SqlRow, withCmi: boolean): LessonProgress {
+  const data = (row.data ?? {}) as Partial<StoredProgress>
+  return {
+    courseId: row.course_id as string,
+    lessonId: row.lesson_id as string,
+    progress: clampPercent(data.progress),
+    status: typeof data.status === 'string' ? data.status : 'not attempted',
+    completed: data.completed === true,
+    updatedAt: new Date(row.updated_at as string | Date).toISOString(),
+    ...(withCmi ? { cmi: (data.cmi ?? {}) as Record<string, string> } : {}),
+  }
+}
+
+function clampPercent(value: unknown): number {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return 0
+  return Math.min(100, Math.max(0, Math.round(n)))
+}
+
+/**
+ * Сессия слушателя — строго по заголовку Authorization, без cookie.
+ *
+ * Cookie сюда пускать нельзя: маршрут сохранения прогресса изменяющий, а
+ * cookie браузер приложит и к запросу, отправленному чужим сайтом (CSRF).
+ */
+function studentSession(req: ApiRequest, res: ApiResponse) {
+  const account = verifyToken(bearer(req))
+  if (!account) {
+    res.status(401).json({ message: 'Требуется вход в личный кабинет.' })
+    return null
+  }
+  return account
+}
+
+async function listMyProgress(req: ApiRequest, res: ApiResponse) {
+  const account = studentSession(req, res)
+  if (!account) return
+  const sql = getSql()
+  await ensureSchema(sql)
+  const rows = await sql`
+    SELECT course_id, lesson_id, data, updated_at FROM course_progress
+    WHERE user_id = ${account.id}
+  `
+  return res.json({ lessons: rows.map((r) => rowToProgress(r, false)) })
+}
+
+async function getCourseProgress(courseId: string, req: ApiRequest, res: ApiResponse) {
+  const account = studentSession(req, res)
+  if (!account) return
+  const sql = getSql()
+  await ensureSchema(sql)
+  const rows = await sql`
+    SELECT course_id, lesson_id, data, updated_at FROM course_progress
+    WHERE user_id = ${account.id} AND course_id = ${courseId}
+  `
+  return res.json({ courseId, lessons: rows.map((r) => rowToProgress(r, true)) })
+}
+
+/**
+ * Сохранить прогресс урока.
+ *
+ * Прогресс и признак завершения только растут: SCORM-пакет в начале нового
+ * сеанса какое-то время рапортует нулями (и статусом not attempted), и без
+ * этого правила возврат к пройденному уроку обнулял бы его результат. Само
+ * состояние cmi.* при этом всегда пишется свежим — иначе пакету не с чего
+ * будет продолжить.
+ */
+async function saveLessonProgress(
+  courseId: string,
+  lessonId: string,
+  req: ApiRequest,
+  res: ApiResponse,
+) {
+  const account = studentSession(req, res)
+  if (!account) return
+
+  const course = await getCourse(courseId)
+  if (!course) return res.status(404).json({ message: 'Программа не найдена' })
+
+  const known = (course.modules ?? []).some((m) =>
+    (m.lessons ?? []).some((l) => l.id === lessonId),
+  )
+  if (!known) return res.status(404).json({ message: 'Урок не найден в программе' })
+
+  // Прогресс имеет смысл только там, где открыты материалы: иначе запись в
+  // таблицу превращается в бесплатный способ засорять базу.
+  if (!isFreeCourse(course)) {
+    const owned = await accessibleCourseIdsFor(account.id)
+    if (!owned.includes(courseId)) {
+      return res.status(403).json({ message: 'Доступ к программе открывается после оплаты.' })
+    }
+  }
+
+  const body = parseBody(req)
+  const cmi: Record<string, string> = {}
+  const rawCmi = body.cmi
+  if (rawCmi && typeof rawCmi === 'object' && !Array.isArray(rawCmi)) {
+    for (const [key, value] of Object.entries(rawCmi as Record<string, unknown>)) {
+      if (typeof key !== 'string' || !key.startsWith('cmi.')) continue
+      if (typeof value !== 'string') continue
+      cmi[key] = value
+    }
+  }
+  if (JSON.stringify(cmi).length > CMI_MAX_CHARS) {
+    return res.status(413).json({ message: 'Состояние SCORM слишком большое для сохранения.' })
+  }
+
+  const incoming: StoredProgress = {
+    progress: clampPercent(body.progress),
+    status: typeof body.status === 'string' ? body.status.slice(0, 64) : 'not attempted',
+    completed: body.completed === true,
+    cmi,
+  }
+
+  const sql = getSql()
+  await ensureSchema(sql)
+  const previous = await sql`
+    SELECT data FROM course_progress
+    WHERE user_id = ${account.id} AND course_id = ${courseId} AND lesson_id = ${lessonId}
+    LIMIT 1
+  `
+  const before = (previous[0]?.data ?? {}) as Partial<StoredProgress>
+  const next: StoredProgress = {
+    ...incoming,
+    progress: Math.max(clampPercent(before.progress), incoming.progress),
+    completed: before.completed === true || incoming.completed,
+  }
+  // Пройденный урок остаётся пройденным, даже если новый сеанс ещё не дошёл
+  // до конца — статус при этом отражает фактическое состояние пакета.
+  if (next.completed && next.progress < 100) next.progress = 100
+
+  const rows = await sql`
+    INSERT INTO course_progress (user_id, course_id, lesson_id, data, updated_at)
+    VALUES (${account.id}, ${courseId}, ${lessonId}, ${JSON.stringify(next)}::jsonb, NOW())
+    ON CONFLICT (user_id, course_id, lesson_id)
+    DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+    RETURNING course_id, lesson_id, data, updated_at
+  `
+  return res.json(rowToProgress(rows[0], false))
+}
+
 /**
  * Программы, использующие SCORM-пакет. Связь — через launchUrl уроков, который
  * при загрузке пакета формируется как `/scorm-store/<id>/<точка входа>`.
@@ -1907,6 +2106,7 @@ async function dbStatus(res: ApiResponse) {
   await ensureSchema(sql)
   const [{ count: coursesCount }] = await sql`SELECT COUNT(*)::int AS count FROM courses`
   const [{ count: usersCount }] = await sql`SELECT COUNT(*)::int AS count FROM users`
+  const [{ count: progressCount }] = await sql`SELECT COUNT(*)::int AS count FROM course_progress`
   const users = await sql`
     SELECT id, name, email, role, kind, created_at
     FROM users ORDER BY created_at ASC
@@ -1915,6 +2115,7 @@ async function dbStatus(res: ApiResponse) {
     tables: [
       { name: 'courses', label: 'Программы', rows: Number(coursesCount) },
       { name: 'users', label: 'Аккаунты', rows: Number(usersCount) },
+      { name: 'course_progress', label: 'Прогресс обучения', rows: Number(progressCount) },
     ],
     users: users.map((u) => ({
       id: u.id,
@@ -1996,6 +2197,9 @@ async function updateDbUser(id: string, req: ApiRequest, res: ApiResponse) {
 async function deleteDbUser(id: string, res: ApiResponse) {
   const sql = getSql()
   await sql`DELETE FROM users WHERE id = ${id}`
+  // Вместе с аккаунтом уходит и его обучение: иначе строки прогресса остаются
+  // висеть без владельца и достанутся следующему аккаунту с тем же id.
+  await sql`DELETE FROM course_progress WHERE user_id = ${id}`
   return res.status(204).end()
 }
 

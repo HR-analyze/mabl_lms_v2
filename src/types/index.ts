@@ -70,6 +70,10 @@ export interface Lesson {
   title: string
   format: CourseFormat
   duration: string
+  /**
+   * Отметка «урок пройден» из записи программы — общая для всех слушателей,
+   * поэтому для показа личного прогресса не используется (см. LessonProgress).
+   */
   completed?: boolean
   /** URL точки входа SCORM-пакета (res/index.html) для интерактивных уроков. */
   launchUrl?: string
@@ -79,6 +83,28 @@ export interface CourseModule {
   id: string
   title: string
   lessons: Lesson[]
+}
+
+/**
+ * Прогресс одного урока у текущего слушателя.
+ *
+ * Живёт отдельно от записи программы: у каждого слушателя он свой (см.
+ * таблицу course_progress и src/api/progress.ts).
+ */
+export interface LessonProgress {
+  courseId: string
+  lessonId: string
+  /** Процент прохождения урока, 0–100. */
+  progress: number
+  /** Последний cmi.core.lesson_status от SCORM-пакета. */
+  status: string
+  completed: boolean
+  updatedAt: string
+  /**
+   * Состояние SCORM-сеанса (cmi.*). Приходит только в выдаче по конкретной
+   * программе — из него пакет продолжает прохождение.
+   */
+  cmi?: Record<string, string>
 }
 
 export interface Course {
@@ -94,7 +120,12 @@ export interface Course {
   durationHours: number
   lessonsCount: number
   price: number
-  /** Прогресс в процентах (0–100) */
+  /**
+   * Прогресс в процентах (0–100) — ОБЩЕЕ для программы поле из админки.
+   *
+   * Это не прогресс слушателя: запись программы одна на всех. Прогресс
+   * конкретного человека берётся из ProgressContext (таблица course_progress).
+   */
   progress: number
   modules: CourseModule[]
   /** id связанного опросника, если есть */
