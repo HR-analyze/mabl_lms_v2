@@ -198,12 +198,12 @@ export default function AdminUserEditPage() {
 
             <div>
               <span className="mb-2 block text-[0.72rem] uppercase tracking-wide text-ink-60">
-                Записан на программы
+                Доступ к программам без оплаты
               </span>
               {courses.length > 0 ? (
                 <div className="grid gap-2 rounded-card border border-ink-10 p-4 sm:grid-cols-2">
                   {courses.map((c) => (
-                    <label key={c.id} className="flex items-center gap-2.5 text-sm text-ink-80">
+                    <label key={c.id} className="flex cursor-pointer items-center gap-2.5 text-sm text-ink-80">
                       <input
                         type="checkbox"
                         checked={form.enrolledCourseIds.includes(c.id)}
@@ -217,6 +217,13 @@ export default function AdminUserEditPage() {
               ) : (
                 <p className="text-sm text-ink-60">В каталоге пока нет программ.</p>
               )}
+              <p className="mt-2 text-[0.78rem] leading-relaxed text-ink-50">
+                Отмеченные программы открываются слушателю сразу, без покупки — это для
+                внутренних: сотрудников, преподавателей, тестировщиков. Заказ при этом не
+                создаётся и в выручку такая выдача не попадает. Снятая галочка доступ
+                забирает, но купленные программы остаются доступными в любом случае.
+                Изменения доходят до слушателя в течение полуминуты.
+              </p>
             </div>
           </>
         )}
