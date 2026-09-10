@@ -1334,17 +1334,74 @@ async function toggleReaction(newsId: string, req: ApiRequest, res: ApiResponse)
 
 // ---------------- admin participants (БД) ----------------
 
+/**
+ * Программы, открытые участникам вручную (по слушателям).
+ *
+ * `enrolledCourseIds` в карточке участника — это ИМЕННО выданный доступ, а не
+ * отдельное поле CRM. Раньше галочки в карточке никуда не вели: они ложились в
+ * participants.data и на доступ не влияли, из-за чего администратор отмечал
+ * программы, сохранял — и слушатель по-прежнему видел «Купить». Теперь и чтение,
+ * и запись идут в course_grants, поэтому карточка показывает правду.
+ *
+ * Идентификаторы совпадают: участник-слушатель заводится с тем же id, что и его
+ * аккаунт (см. createDbUser).
+ */
+async function grantedByUser(): Promise<Map<string, string[]>> {
+  const sql = getSql()
+  const rows = await sql`SELECT user_id, course_id FROM course_grants`
+  const map = new Map<string, string[]>()
+  for (const row of rows) {
+    const userId = row.user_id as string
+    map.set(userId, [...(map.get(userId) ?? []), row.course_id as string])
+  }
+  return map
+}
+
 async function listParticipants(): Promise<AdminUser[]> {
   const sql = getSql()
   await ensureSchema(sql)
   const rows = await sql`SELECT data FROM participants ORDER BY sort_order ASC`
-  return rows.map((r) => r.data as AdminUser)
+  const granted = await grantedByUser()
+  return rows.map((r) => {
+    const participant = r.data as AdminUser
+    return { ...participant, enrolledCourseIds: granted.get(participant.id) ?? [] }
+  })
 }
 
 async function getParticipant(id: string): Promise<AdminUser | undefined> {
   const sql = getSql()
+  await ensureSchema(sql)
   const rows = await sql`SELECT data FROM participants WHERE id = ${id} LIMIT 1`
-  return rows[0] ? (rows[0].data as AdminUser) : undefined
+  if (!rows[0]) return undefined
+  const participant = rows[0].data as AdminUser
+  const granted = await sql`SELECT course_id FROM course_grants WHERE user_id = ${id}`
+  return { ...participant, enrolledCourseIds: granted.map((g) => g.course_id as string) }
+}
+
+/**
+ * Привести выданные доступы участника к переданному набору программ.
+ * Возвращает набор, который реально сохранился.
+ */
+async function syncGrants(userId: string, requested: unknown, grantedBy: string | null): Promise<string[]> {
+  const sql = getSql()
+  const ids = Array.isArray(requested) ? requested : []
+  // Выдать доступ можно только к существующей программе: опечатка в id иначе
+  // молча создала бы запись, которая ничего не открывает.
+  const known = new Set((await listCourses()).map((c) => c.id))
+  const courseIds = Array.from(
+    new Set(ids.filter((id): id is string => typeof id === 'string' && known.has(id))),
+  )
+  await sql`DELETE FROM course_grants WHERE user_id = ${userId}`
+  for (const courseId of courseIds) {
+    await sql`
+      INSERT INTO course_grants (user_id, course_id, granted_by)
+      VALUES (${userId}, ${courseId}, ${grantedBy})
+    `
+  }
+  // Доступы кэшируются на полминуты; без сброса администратор решил бы, что
+  // сохранение не сработало.
+  accessCache.delete(userId)
+  return courseIds
 }
 
 async function createParticipant(req: ApiRequest, res: ApiResponse) {
@@ -1365,12 +1422,24 @@ async function createParticipant(req: ApiRequest, res: ApiResponse) {
 
 async function updateParticipant(id: string, req: ApiRequest, res: ApiResponse) {
   const sql = getSql()
+  await ensureSchema(sql)
   const rows = await sql`SELECT data FROM participants WHERE id = ${id} LIMIT 1`
   if (!rows[0]) return res.status(404).json({ message: 'Участник не найден' })
   const patch = parseBody(req) as Partial<AdminUser>
   const next = { ...(rows[0].data as AdminUser), ...patch, id } as AdminUser
+
+  // Отмеченные программы — это выдача доступа, и живёт она в course_grants.
+  // В самой карточке набор не храним, иначе появятся два расходящихся списка.
+  const enrolled =
+    patch.enrolledCourseIds !== undefined
+      ? await syncGrants(id, patch.enrolledCourseIds, verifyToken(bearer(req))?.id ?? null)
+      : ((await sql`SELECT course_id FROM course_grants WHERE user_id = ${id}`).map(
+          (g) => g.course_id as string,
+        ) as string[])
+  next.enrolledCourseIds = []
+
   await sql`UPDATE participants SET data = ${JSON.stringify(next)}::jsonb, updated_at = NOW() WHERE id = ${id}`
-  return res.json(next)
+  return res.json({ ...next, enrolledCourseIds: enrolled })
 }
 
 async function setParticipantStatus(id: string, status: string, res: ApiResponse) {
