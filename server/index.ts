@@ -74,6 +74,18 @@ app.get(/^\/scorm-store\/(.+)$/, (req, res, next) => {
   return callApi(apiHandler)(req, res, next)
 })
 
+// Старые ссылки на пакеты из репозитория (`/scorm/<id>/...`). Раньше по этому
+// адресу лежала статика, которую веб-сервер отдавал напрямую, — то есть платный
+// курс скачивал любой, кто знал адрес. Теперь путь ведёт в ту же раздачу с
+// проверкой доступа; курсы, созданные до переезда, продолжают работать.
+// ВАЖНО: маршрут объявлен ДО express.static, иначе статика перехватила бы его.
+app.get(/^\/scorm\/(.+)$/, (req, res, next) => {
+  const rest = req.params[0]
+  const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
+  req.url = `/api/scorm-file/${rest}${query}`
+  return callApi(apiHandler)(req, res, next)
+})
+
 // ---------- Файлы учебных материалов ----------
 app.get(/^\/files\/(.+)$/, (req, res, next) => {
   const key = decodeURIComponent(req.params[0])

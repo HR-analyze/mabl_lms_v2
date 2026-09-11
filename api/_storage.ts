@@ -223,33 +223,47 @@ function parseRange(range: string | undefined, size: number): { start: number; e
   return { start, end: Math.min(end, size - 1) }
 }
 
+/**
+ * Прочитать файл с диска по готовому абсолютному пути.
+ *
+ * Используется и дисковым бэкендом хранилища, и раздачей SCORM-пакетов,
+ * лежащих в репозитории. Путь сюда приходит уже проверенным: удержать его в
+ * границах своего каталога обязан вызывающий.
+ */
+export async function getLocalObject(
+  file: string,
+  range?: string,
+  contentType?: string,
+): Promise<StoredObject> {
+  // stat бросает ENOENT для отсутствующего файла — вызывающий код ловит это
+  // так же, как NoSuchKey от S3, и отвечает 404.
+  const stat = await fsp.stat(file)
+  if (!stat.isFile()) {
+    throw Object.assign(new Error(`Не файл: ${file}`), { name: 'NoSuchKey' })
+  }
+  const part = parseRange(range, stat.size)
+  if (part) {
+    return {
+      body: fs.createReadStream(file, { start: part.start, end: part.end }),
+      contentType,
+      contentLength: part.end - part.start + 1,
+      contentRange: `bytes ${part.start}-${part.end}/${stat.size}`,
+      status: 206,
+    }
+  }
+  return {
+    body: fs.createReadStream(file),
+    contentType,
+    contentLength: stat.size,
+    status: 200,
+  }
+}
+
 /** Прочитать объект (с поддержкой Range — нужен для видео внутри пакетов). */
 export async function getObject(key: string, range?: string): Promise<StoredObject> {
   if (storageBackend() === 'disk') {
     const file = diskPathFor(key, 'objects')
-    // stat бросает ENOENT для отсутствующего файла — вызывающий код ловит это
-    // так же, как NoSuchKey от S3, и отвечает 404.
-    const stat = await fsp.stat(file)
-    if (!stat.isFile()) {
-      throw Object.assign(new Error(`Не файл: ${key}`), { name: 'NoSuchKey' })
-    }
-    const contentType = await readDiskMeta(key)
-    const part = parseRange(range, stat.size)
-    if (part) {
-      return {
-        body: fs.createReadStream(file, { start: part.start, end: part.end }),
-        contentType,
-        contentLength: part.end - part.start + 1,
-        contentRange: `bytes ${part.start}-${part.end}/${stat.size}`,
-        status: 206,
-      }
-    }
-    return {
-      body: fs.createReadStream(file),
-      contentType,
-      contentLength: stat.size,
-      status: 200,
-    }
+    return await getLocalObject(file, range, await readDiskMeta(key))
   }
 
   const out = await s3().send(
