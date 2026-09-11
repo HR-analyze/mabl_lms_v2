@@ -102,9 +102,9 @@ export async function resetRateLimit(sql: Sql, scope: string, key: string): Prom
  *
  * Заголовкам от клиента доверять нельзя — X-Forwarded-For подделывается, и по
  * подделанному значению перебор шёл бы с «новым IP» на каждой попытке. Поэтому
- * сначала берём заголовки, которые проставляет сам Vercel, и лишь в последнюю
- * очередь — ПРАВЫЙ элемент X-Forwarded-For: слева в цепочке стоит то, что
- * прислал клиент, справа — то, что дописал ближайший к нам прокси.
+ * сначала берём X-Real-IP, который проставляет наш nginx, и лишь затем —
+ * ПРАВЫЙ элемент X-Forwarded-For: слева в цепочке стоит то, что прислал
+ * клиент, справа — то, что дописал ближайший к нам прокси.
  */
 export function clientIp(req: ApiRequest): string {
   const pick = (name: string): string => {
@@ -113,9 +113,9 @@ export function clientIp(req: ApiRequest): string {
     return typeof value === 'string' ? value.trim() : ''
   }
 
-  // Заголовку x-vercel-forwarded-for здесь верить нельзя: его проставляла
-  // платформа, а на своём сервере его подделает любой клиент и обойдёт лимит.
-  // Доверенные заголовки ставит наш nginx (X-Real-IP, X-Forwarded-For).
+  // Доверенные заголовки ставит наш nginx (X-Real-IP, X-Forwarded-For): он
+  // единственный, кто стоит перед приложением, и переписывает их сам. Любой
+  // другой заголовок с адресом клиент подделает и обойдёт лимит.
   const realIp = pick('x-real-ip')
   if (realIp) return realIp
 

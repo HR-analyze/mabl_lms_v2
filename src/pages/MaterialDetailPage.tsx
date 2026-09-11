@@ -56,7 +56,7 @@ export default function MaterialDetailPage() {
         </div>
 
         <div className="mt-10 flex flex-wrap items-center gap-4">
-          {/* Файл прикрепляется в админ-панели и лежит в хранилище (Blob).
+          {/* Файл прикрепляется в админ-панели и лежит в файловом хранилище.
               Пока его нет, материал читается прямо на странице. */}
           {downloadUrl ? (
             <Button href={downloadUrl} download={material.fileName}>

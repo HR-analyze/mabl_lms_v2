@@ -1,19 +1,19 @@
-# Перенос МАБЛ LMS с Vercel на VM Yandex Cloud
+# Развёртывание МАБЛ LMS на VM Yandex Cloud
 
 Пошаговая инструкция: что нажать в консоли Yandex Cloud и какие команды выполнить
 на сервере. Все команды проверяемые — после каждого блока указано, как убедиться,
 что шаг сработал.
 
-**Целевая архитектура:**
+**Архитектура:**
 
-| Слой | Было (Vercel) | Стало (Yandex Cloud) |
-|---|---|---|
-| Фронтенд | CDN Vercel | статика `dist/`, раздаёт nginx на VM |
-| API | serverless-функции `api/*` | один процесс Node (Express) на порту 3000, systemd |
-| База | Neon (HTTP-драйвер) | Managed Service for PostgreSQL, драйвер `pg` |
-| Файлы | Vercel Blob | Object Storage (S3), приватный бакет |
-| Маршруты | `vercel.json` → rewrites | nginx + `server/index.ts` |
-| Cron | Vercel Crons | systemd-таймер `mabl-news-sync.timer` |
+| Слой | Чем обслуживается |
+|---|---|
+| Фронтенд | статика `dist/`, раздаёт nginx на VM |
+| API | один процесс Node (Express) на порту 3000, под systemd |
+| База | Managed Service for PostgreSQL, драйвер `pg` |
+| Файлы | диск ВМ или Object Storage (S3), приватный бакет |
+| Маршруты | nginx + `server/index.ts` |
+| Расписание | systemd-таймер `mabl-news-sync.timer` |
 
 Термины: **VM** (virtual machine, виртуальная машина) — арендованный сервер;
 **Object Storage** — файловое хранилище, совместимое с протоколом S3;
@@ -25,36 +25,14 @@
 ## 0. Что нужно приготовить заранее
 
 1. Доступ к консоли Yandex Cloud с правами на создание ресурсов.
-2. SSH-доступ к VM (у вас уже есть):
+2. SSH-доступ к VM:
    ```powershell
    ssh -i "%USERPROFILE%\.ssh\ssh-key-1787832426561-hr-ai-01" user-hr@37.230.169.206
    ```
-3. Доступ к проекту на Vercel — оттуда нужно забрать **секреты** и **дамп базы**.
-4. Домен, который сейчас указывает на Vercel, и доступ к его DNS-записям.
-
-### 0.1. Забрать секреты с Vercel (до отключения проекта!)
-
-Vercel → проект → Settings → Environment Variables. Выпишите значения:
-
-| Переменная | Зачем |
-|---|---|
-| `AUTH_SECRET` | подпись токенов сессий. Если потерять — **все пользователи разлогинятся** |
-| `DATABASE_URL` | строка подключения к Neon, нужна для дампа |
-| `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY` | боевая оплата |
-| `TELEGRAM_CHANNEL` | импорт новостей |
-| `SETUP_SECRET` | инициализация БД |
-| `ADMIN_EMAIL` | стартовый администратор |
-
-### 0.2. Снять дамп базы Neon
-
-На своей машине (или на VM — тогда сначала `sudo apt install -y postgresql-client-16`):
-
-```bash
-pg_dump "postgres://ПОЛЬЗОВАТЕЛЬ:ПАРОЛЬ@ХОСТ.neon.tech/ИМЯ_БД?sslmode=require" \
-  --format=custom --no-owner --no-privileges --file=mabl-neon.dump
-```
-
-Проверка: `ls -lh mabl-neon.dump` — файл не должен быть пустым.
+3. Домен и доступ к его DNS-записям.
+4. Значения секретов приложения — список в разделе 4. Главный из них —
+   `AUTH_SECRET`: его смена разлогинивает всех пользователей, поэтому при
+   переустановке сервера значение переносят как есть, а не генерируют заново.
 
 ---
 
@@ -149,8 +127,12 @@ sudo nano /etc/mabl-lms.env
 - `DATABASE_URL` — `postgresql://mabl:ПАРОЛЬ@rc1a-xxxx.mdb.yandexcloud.net:6432/mabl?sslmode=verify-full`
 - `DATABASE_CA_FILE=/etc/ssl/certs/yandex-root.crt`
 - `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` — из шага 2
-- `AUTH_SECRET` — **тот же, что был на Vercel** (иначе слетят сессии)
-- `YOOKASSA_*`, `TELEGRAM_CHANNEL`, `ADMIN_EMAIL`, `SETUP_SECRET` — из шага 0.1
+- `AUTH_SECRET` — `openssl rand -base64 48`. При переустановке сервера
+  перенесите ПРЕЖНЕЕ значение: новое разлогинит всех слушателей
+- `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY` — боевая оплата
+- `TELEGRAM_CHANNEL` — импорт новостей
+- `CRON_SECRET` — закрывает маршрут синхронизации новостей (раздел 8)
+- `ADMIN_EMAIL`, `SETUP_SECRET` — стартовый администратор и инициализация БД
 
 Проверка подключения к БД:
 
@@ -164,16 +146,20 @@ psql "$DATABASE_URL" -c "SELECT version();"
 
 ---
 
-## 5. Перенос данных
+## 5. Данные: восстановление из резервной копии
+
+Нужно, только если разворачиваете сервер заново или поднимаете базу из бэкапа
+(как их снимать — раздел 12). На чистой установке пропустите: схему приложение
+создаст само, а стартового администратора заведёт инициализация из раздела 6.
 
 ```bash
 cd ~
-# файл mabl-neon.dump скопируйте на VM, например через scp с локальной машины:
-#   scp -i "%USERPROFILE%\.ssh\ssh-key-..." mabl-neon.dump user-hr@37.230.169.206:~/
+# дамп скопируйте на VM, например через scp с локальной машины:
+#   scp -i "%USERPROFILE%\.ssh\ssh-key-..." mabl-backup.dump user-hr@37.230.169.206:~/
 
 set -a; . /etc/mabl-lms.env; set +a
 pg_restore --dbname="$DATABASE_URL" --no-owner --no-privileges --clean --if-exists \
-  --verbose mabl-neon.dump
+  --verbose mabl-backup.dump
 ```
 
 Проверка — таблицы и количество строк:
@@ -187,9 +173,9 @@ psql "$DATABASE_URL" -c "SELECT count(*) FROM users;"
 Ожидаем таблицы `courses`, `users`, `news`, `news_comments`, `news_reactions`,
 `participants`, `orders`, `content`, `course_progress`.
 
-> `course_progress` (прогресс обучения слушателей) появилась позже остальных.
-> В старом дампе её нет — приложение создаст её само при первом запросе
-> (`ensureSchema`), отдельная миграция не нужна.
+> Если в дампе не хватает какой-то таблицы (например, `course_progress` —
+> она появилась позже остальных), приложение создаст её само при первом
+> запросе (`ensureSchema`), отдельная миграция не нужна.
 
 ### Файловое хранилище
 
@@ -244,42 +230,36 @@ curl -s http://127.0.0.1:3000/api/courses | head -c 300
 
 ---
 
-## 7. Перенос файлов из Vercel Blob
+## 7. nginx и TLS
 
-Скрипт читает адреса файлов из БД, скачивает их с Vercel и кладёт в бакет,
-после чего переписывает адреса на `/files/...`. Сначала — пробный прогон:
+Конфиг разложен на два файла, и это важно:
 
-```bash
-cd /srv/mabl-lms
-set -a; . /etc/mabl-lms.env; set +a
-node scripts/migrate-blob-to-s3.mjs --dry-run
-```
+| Файл | Что внутри | Когда копировать |
+|---|---|---|
+| `deploy/mabl-lms-app.conf` | заголовки, маршруты, статика, SPA | при каждом обновлении — безопасно |
+| `deploy/nginx-mabl-lms.conf` | `listen`, `server_name`, TLS от certbot | **один раз**, при установке |
 
-Если план выглядит верно — перенос:
+Второй файл трогать после установки нельзя: в нём живут домен и TLS-секция,
+которую дописывает certbot. Копирование его поверх рабочего конфига стирает и
+то и другое — домен перестаёт совпадать, 443-й порт уходит в чужой server-блок,
+и сайт открывается чужой страницей с ошибкой сертификата.
 
-```bash
-node scripts/migrate-blob-to-s3.mjs
-```
-
-Скрипт идемпотентен: повторный запуск пропускает уже перенесённое.
-
-> **Важно:** он работает, пока проект на Vercel ещё жив и файлы доступны по
-> старым ссылкам. Делайте это ДО отключения Vercel. Если Blob был приватным и
-> скачивание отдаёт 403, единственный путь — перезалить SCORM-пакеты через
-> админку после переезда.
-
-Проверка: `curl -sI http://127.0.0.1:3000/scorm-store/<id-пакета>/index.html`
-— ожидаем `HTTP/1.1 200`.
-
----
-
-## 8. nginx и TLS
+Первая установка:
 
 ```bash
+sudo mkdir -p /etc/nginx/snippets
+sudo cp /srv/mabl-lms/deploy/mabl-lms-app.conf /etc/nginx/snippets/mabl-lms-app.conf
 sudo cp /srv/mabl-lms/deploy/nginx-mabl-lms.conf /etc/nginx/sites-available/mabl-lms
 sudo nano /etc/nginx/sites-available/mabl-lms      # подставить свой домен в server_name
 sudo ln -sf /etc/nginx/sites-available/mabl-lms /etc/nginx/sites-enabled/mabl-lms
 sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Обновление правил раздачи в дальнейшем — только сниппет:
+
+```bash
+sudo cp /srv/mabl-lms/deploy/mabl-lms-app.conf /etc/nginx/snippets/mabl-lms-app.conf
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
@@ -294,16 +274,22 @@ curl -s http://37.230.169.206/healthz
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d mabl.ru -d www.mabl.ru
+sudo certbot --nginx -d course.mabl.ru
 sudo systemctl status certbot.timer     # автопродление
 ```
+
+> Если TLS-секцию всё же затёрли — сертификат цел, он лежит в `/etc/letsencrypt`
+> и nginx его не трогает. Верните правильный `server_name` и повторите команду
+> `certbot --nginx`; на вопрос о существующем сертификате выбирайте
+> **«Attempt to reinstall this existing certificate»** — перевыпускать нечего,
+> а второй вариант зря расходует лимит Let's Encrypt.
 
 > Certificate Manager Яндекса здесь не подходит: он выдаёт сертификаты для
 > Application Load Balancer и CDN, а не для nginx на «голой» VM.
 
 ---
 
-## 9. Ежедневная синхронизация новостей (замена Vercel Cron)
+## 8. Ежедневная синхронизация новостей
 
 ```bash
 sudo cp /srv/mabl-lms/deploy/mabl-news-sync.service /etc/systemd/system/
@@ -315,6 +301,11 @@ systemctl list-timers mabl-news-sync.timer --no-pager
 
 Проверка вручную: `sudo systemctl start mabl-news-sync && journalctl -u mabl-news-sync -n 20`
 
+> Задайте `CRON_SECRET` в `/etc/mabl-lms.env`: таймер присылает его в заголовке
+> `Authorization`, и маршрут закрывается от посторонних. Без секрета запустить
+> синхронизацию может кто угодно — её сдерживает только лимит частоты, а каждый
+> вызов ходит в Telegram и переписывает таблицу новостей.
+
 Отдельно убедитесь, что с VM вообще доступен Telegram:
 
 ```bash
@@ -325,12 +316,12 @@ curl -s -o /dev/null -w "%{http_code}\n" https://t.me/s/mabl_academy
 
 ---
 
-## 10. Приёмочная проверка перед переключением DNS
+## 9. Приёмочная проверка перед переключением DNS
 
 Проверяйте по IP или временному поддомену:
 
 - [ ] Главная открывается, стили и шрифты на месте
-- [ ] Вход администратора работает (тем же паролем — если `AUTH_SECRET` перенесён)
+- [ ] Вход администратора работает (прежние сессии живы, если `AUTH_SECRET` не менялся)
 - [ ] Список программ, новости, материалы отображаются из БД
 - [ ] SCORM-курс открывается и **отмечает прогресс** (проверка same-origin)
 - [ ] Файл материала скачивается по ссылке `/files/...`
@@ -340,21 +331,20 @@ curl -s -o /dev/null -w "%{http_code}\n" https://t.me/s/mabl_academy
 
 ---
 
-## 11. Переключение домена и ЮKassa
+## 10. Переключение домена и ЮKassa
 
 1. **За сутки** снизьте TTL DNS-записи до 300 секунд.
-2. Смените A-запись домена на `37.230.169.206`, удалите CNAME на Vercel.
-3. Дождитесь распространения: `dig +short mabl.ru`
-4. Выпустите TLS-сертификат (шаг 8).
+2. Направьте A-запись домена на `37.230.169.206`.
+3. Дождитесь распространения: `dig +short course.mabl.ru`
+4. Выпустите TLS-сертификат (шаг 7).
 5. **ЮKassa** → Личный кабинет → Магазин → Интеграция → HTTP-уведомления:
-   поменяйте URL вебхука на `https://mabl.ru/api/payments/webhook`.
+   URL вебхука — `https://course.mabl.ru/api/payments/webhook`.
 6. Проведите **боевой платёж на минимальную сумму** и убедитесь, что заказ
    перешёл в статус «оплачен».
-7. Проект на Vercel не удаляйте ещё неделю — это ваш путь отката.
 
 ---
 
-## 12. Обновление кода в дальнейшем
+## 11. Обновление кода в дальнейшем
 
 Код по-прежнему живёт на GitHub. Деплой — одна команда на сервере:
 
@@ -367,7 +357,7 @@ cd /srv/mabl-lms && ./deploy/deploy.sh main
 
 ---
 
-## 13. Резервные копии
+## 12. Резервные копии
 
 **База.** Автоматические бэкапы включены на стороне Managed PostgreSQL
 (кластер → «Резервные копии»). Дополнительный локальный дамп по расписанию:
@@ -389,7 +379,7 @@ sudo chmod +x /etc/cron.daily/mabl-db-dump
 
 ---
 
-## 14. Диагностика
+## 13. Диагностика
 
 | Симптом | Где смотреть | Обычная причина |
 |---|---|---|
@@ -397,7 +387,7 @@ sudo chmod +x /etc/cron.daily/mabl-db-dump
 | API отвечает «Не найдена строка подключения» | `/etc/mabl-lms.env` | пустой `DATABASE_URL` |
 | Запросы к БД висят | группа безопасности кластера | закрыт порт 6432 из подсети VM |
 | «Файловое хранилище не настроено» | `/etc/mabl-lms.env` | нет ключей `S3_*` |
-| SCORM: «Материалы недоступны» | `journalctl -u mabl-lms` | файлы не перенесены (шаг 7) |
+| SCORM: «Материалы недоступны» | `journalctl -u mabl-lms` | пакет не загружен в хранилище — перезалейте его через админку |
 | 413 при загрузке файла | nginx `client_max_body_size`, `MAX_UPLOAD_MB` | лимит меньше размера файла |
 | Сессии слетели после переезда | `AUTH_SECRET` | секрет не совпал с прежним |
 

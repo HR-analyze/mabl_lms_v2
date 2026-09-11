@@ -411,9 +411,8 @@ export function publicUrlFor(key: string): string {
 
 /**
  * Обратное преобразование: из адреса файла получить ключ в хранилище.
- * Понимает и наши адреса (`/files/...`), и старые ссылки Vercel Blob
- * (`https://<store>.public.blob.vercel-storage.com/<key>`) — последние ещё
- * встречаются в записях материалов, перенесённых с Vercel.
+ * Понимает и наши адреса (`/files/...`), и абсолютные ссылки — у них берётся
+ * путь: в записях материалов встречаются и те и другие.
  */
 export function keyFromUrl(url: string): string | undefined {
   if (!url) return undefined

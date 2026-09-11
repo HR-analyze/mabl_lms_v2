@@ -9,10 +9,9 @@ import type { ApiRequest, ApiResponse } from '../api/_http.js'
 /**
  * HTTP-сервер приложения.
  *
- * На Vercel каждый файл в `api/` был отдельной serverless-функцией, а маршруты
- * (`/api/*`, `/scorm-store/*`, SPA-fallback) описывались в `vercel.json`. После
- * переезда на VM Yandex Cloud эти же правила живут здесь: один процесс Node
- * отдаёт и API, и собранный фронтенд.
+ * Один процесс Node отдаёт и API, и собранный фронтенд: маршруты (`/api/*`,
+ * `/scorm-store/*`, `/scorm/*`, `/files/*`, SPA-fallback) описаны здесь, а
+ * наружу их публикует nginx.
  *
  * Переменные окружения:
  *   PORT            — порт (по умолчанию 3000)
@@ -42,7 +41,7 @@ app.disable('x-powered-by')
 const rawUpload = express.raw({ type: () => true, limit: `${MAX_UPLOAD_MB}mb` })
 const jsonBody = express.json({ limit: '5mb' })
 
-/** Вызвать обработчик API так, как его вызывал бы Vercel. */
+/** Обернуть обработчик API в middleware Express, не теряя асинхронных ошибок. */
 function callApi(
   handler: (req: ApiRequest, res: ApiResponse) => Promise<unknown> | unknown,
 ) {
@@ -58,7 +57,7 @@ app.use('/api', (req, res, next) => {
   return jsonBody(req, res, next)
 })
 
-// Одноразовая инициализация БД по секрету (отдельный обработчик, как на Vercel).
+// Одноразовая инициализация БД по секрету (отдельный обработчик).
 app.all('/api/setup', callApi(setupHandler))
 
 // Все остальные /api/* разбирает единый роутер: путь он берёт из req.url.

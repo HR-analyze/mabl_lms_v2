@@ -118,8 +118,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   // Маршрут разбирается из адреса запроса: /api/courses/<id> → ['courses', <id>].
-  // Префиксы `api` и `router` отбрасываются — второй остался от старых ссылок
-  // на serverless-функцию.
   const pathname = (req.url || '').split('?')[0]
   // Каждый сегмент декодируется отдельно и с защитой от битого %-кодирования:
   // id пакетов SCORM бывают кириллическими, а кривой адрес не должен ронять запрос.
@@ -148,7 +146,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   if (segments[0] === 'api') segments = segments.slice(1)
-  if (segments[0] === 'router') segments = segments.slice(1)
 
   const method = (req.method || 'GET').toUpperCase()
   const path = segments.join('/')
@@ -350,11 +347,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     }
 
     // ---------- NEWS (БД + импорт из Telegram) ----------
-    // Синхронизация из Telegram-канала. GET — вызывается Vercel Cron,
-    // POST — кнопкой «Обновить из Telegram» в админ-панели.
+    // Синхронизация из Telegram-канала. GET — вызывает systemd-таймер
+    // mabl-news-sync.timer, POST — кнопка «Обновить из Telegram» в админ-панели.
     // POST закрыт правами администратора (см. isPublicMutation), а GET дёргает
-    // Vercel Cron — и раньше его мог дёргать кто угодно, сколько угодно раз.
-    // Каждый вызов ходит в Telegram и переписывает всю таблицу новостей.
+    // планировщик — и без CRON_SECRET его может дёрнуть кто угодно, сколько
+    // угодно раз. Каждый вызов ходит в Telegram и переписывает таблицу новостей.
     if (path === 'news/sync' && (method === 'GET' || method === 'POST')) {
       const sql = getSql()
       if (method === 'GET') {
@@ -672,7 +669,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return res.status(404).json({ message: `Маршрут не найден: ${method} /api/${path}` })
   } catch (err: unknown) {
     // Наружу — нейтральный текст и код инцидента. Раньше сюда уходило
-    // err.message: ошибки Neon и Vercel Blob раскрывали имена таблиц и колонок,
+    // err.message: ошибки базы и хранилища раскрывали имена таблиц и колонок,
     // структуру хранилища, иногда куски конфигурации. Подробности — в логах,
     // найти их по коду можно за секунды.
     const incident = crypto.randomBytes(6).toString('hex')
@@ -707,11 +704,11 @@ function found(res: ApiResponse, value: unknown, notFoundMsg: string) {
 /**
  * Пускать ли синхронизацию новостей по GET.
  *
- * Правильный ключ — CRON_SECRET: если он задан в проекте, Vercel Cron сам
- * присылает его в заголовке Authorization, и посторонний вызов отсекается
- * начисто. Пока он не задан, ломать ежедневную синхронизацию нельзя (запросы
- * от планировщика ничем не подписаны), поэтому ограничиваемся частотой и
- * подсказываем администратору в логах, как закрыть маршрут по-настоящему.
+ * Правильный ключ — CRON_SECRET: если он задан, systemd-таймер присылает его
+ * в заголовке Authorization (см. deploy/mabl-news-sync.service), и посторонний
+ * вызов отсекается начисто. Пока он не задан, ломать ежедневную синхронизацию
+ * нельзя (запросы от планировщика ничем не подписаны), поэтому ограничиваемся
+ * частотой и подсказываем администратору в логах, как закрыть маршрут.
  */
 async function allowNewsSync(
   req: ApiRequest,
@@ -728,7 +725,7 @@ async function allowNewsSync(
 
   console.warn(
     '[news/sync] CRON_SECRET не задан — маршрут открыт всем и защищён только ограничением ' +
-      'частоты. Задайте CRON_SECRET в настройках проекта: Vercel Cron будет присылать его сам.',
+      'частоты. Задайте CRON_SECRET в /etc/mabl-lms.env: systemd-таймер будет присылать его сам.',
   )
   await ensureSchema(sql)
   const limit = await hitRateLimit(sql, 'news-sync', clientIp(req), NEWS_SYNC_MAX_PER_HOUR, 60 * 60)
@@ -2045,9 +2042,9 @@ function siteOrigin(req: ApiRequest): string {
 
   if (host && isTrustedHost(host)) return `${proto}://${host}`
 
-  // Домен из заголовка не подтверждён. Своего адреса деплоя у нас больше нет
-  // (на Vercel его подставляла платформа), поэтому остаётся только локальный
-  // адрес разработки: в проде задавайте SITE_URL.
+  // Домен из заголовка не подтверждён — остаётся только локальный адрес
+  // разработки. В продакшене задавайте SITE_URL: из него строятся ссылки в
+  // письмах и возврат после оплаты.
   return 'http://localhost:5173'
 }
 
@@ -2074,9 +2071,12 @@ function isTrustedHost(host: string): boolean {
 }
 
 /**
- * Свой ли origin запроса. Отдельные превью-деплои Vercel живут на доменах вида
- * `<проект>-<хэш>.vercel.app`, поэтому их тоже пропускаем: иначе админка на
- * превью не сможет обратиться к своему же API.
+ * Свой ли origin запроса — то есть можно ли отдать ему CORS-разрешение.
+ *
+ * Разрешены только собственные домены (SITE_URL и ALLOWED_HOSTS) плюс
+ * localhost вне продакшена. Раньше сюда попадал ещё и целый публичный домен
+ * прежнего хостинга со всеми поддоменами: такой поддомен заводит себе кто
+ * угодно за минуту, то есть CORS-разрешение выдавалось постороннему сайту.
  */
 function isAllowedOrigin(origin: string): boolean {
   let host: string
@@ -2085,8 +2085,7 @@ function isAllowedOrigin(origin: string): boolean {
   } catch {
     return false
   }
-  if (isTrustedHost(host)) return true
-  return host.endsWith('.vercel.app')
+  return isTrustedHost(host)
 }
 
 /**
@@ -2433,12 +2432,6 @@ interface ScormPackageMeta {
   fileCount: number
   uploadedAt: string
   /**
-   * Origin прежнего хранилища Vercel Blob. Поле осталось у пакетов, залитых до
-   * переезда; раздача им больше не пользуется — ключ в Object Storage
-   * однозначно собирается как `scorm/<id>/<путь>`.
-   */
-  blobBase?: string
-  /**
    * Карта «путь внутри пакета → {u: адрес, s: размер}». Нужна для диагностики
    * (сверка того, что реально лежит в хранилище, с тем, что было загружено).
    */
@@ -2476,11 +2469,7 @@ function scormMime(path: string): string {
   return SCORM_MIME[ext] ?? 'application/octet-stream'
 }
 
-// Кэш origin хранилища по id пакета — чтобы не ходить в БД на каждый файл
-// (тёплый инстанс функции переиспользует значение между запросами).
-const scormBaseCache = new Map<string, string>()
-
-/** Сохранить метаданные пакета (id задаёт клиент — совпадает с путём в Blob). */
+/** Сохранить метаданные пакета (id задаёт клиент — совпадает с путём в хранилище). */
 async function saveScormPackage(body: Record<string, unknown>): Promise<ScormPackageMeta> {
   const sql = getSql()
   await ensureSchema(sql)
@@ -2494,7 +2483,6 @@ async function saveScormPackage(body: Record<string, unknown>): Promise<ScormPac
     ON CONFLICT (collection, id)
       DO UPDATE SET data = ${JSON.stringify(meta)}::jsonb, updated_at = NOW()
   `
-  if (meta.blobBase) scormBaseCache.set(id, meta.blobBase)
   scormFilesCache.delete(id)
   return meta
 }
@@ -2504,7 +2492,6 @@ async function deleteScormPackage(id: string): Promise<void> {
   const sql = getSql()
   await ensureSchema(sql)
   await sql`DELETE FROM content WHERE collection = 'scorm' AND id = ${id}`
-  scormBaseCache.delete(id)
   scormFilesCache.delete(id)
   try {
     const objects = await listKeys(`scorm/${id}/`)
@@ -2879,11 +2866,9 @@ function safeKey(prefix: string, raw: string): string {
  *   POST /api/scorm/upload?key=scorm/<id>/<путь>      (тело — сырые байты)
  *   POST /api/materials/upload?key=materials/<имя>
  *
- * На Vercel файлы шли из браузера напрямую в Blob, потому что тело запроса к
- * serverless-функции ограничено 4,5 МБ. На своём сервере такого лимита нет:
- * файл принимается целиком и кладётся в хранилище одним запросом. Права
- * администратора проверены общим гардом роутера (это мутация вне списка
- * публичных).
+ * Файл принимается целиком и кладётся в хранилище одним запросом; потолок
+ * задают MAX_UPLOAD_MB и client_max_body_size в nginx. Права администратора
+ * проверены общим гардом роутера (это мутация вне списка публичных).
  */
 async function storageUpload(prefix: string, req: ApiRequest, res: ApiResponse) {
   try {
@@ -2930,9 +2915,6 @@ async function uploadPreflight(req: ApiRequest) {
   const storage = isStorageConfigured()
   return {
     admin,
-    // Поле `blob` сохранено в ответе ради совместимости со старыми вкладками
-    // админки, открытыми до обновления.
-    blob: storage,
     storage,
     mode: storage ? ('server' as const) : undefined,
     /** Куда именно пишутся файлы — диск этой машины или S3-совместимое хранилище. */
