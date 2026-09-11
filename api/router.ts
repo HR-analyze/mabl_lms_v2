@@ -1,5 +1,7 @@
 import type { ApiRequest, ApiResponse } from './_http.js'
 import crypto from 'node:crypto'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcryptjs'
 import { getSql } from './_db.js'
 import type { SqlRow } from './_db.js'
@@ -60,11 +62,13 @@ import {
   storageBackend,
   storageDescription,
   keyFromUrl,
+  getLocalObject,
   listKeys,
   publicUrlFor,
   putObject,
   storageEnvNames,
 } from './_storage.js'
+import type { StoredObject } from './_storage.js'
 import type {
   AdminUser,
   AppNotification,
@@ -130,6 +134,19 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         return part
       }
     })
+
+  // Слэш, закодированный как %2F, разрезал бы путь ПОСЛЕ проверки прав:
+  // `/api/admin%2Fdb` давал сегмент `admin/db`, гард видел segments[0] ===
+  // 'admin/db' (а не 'admin') и пропускал запрос, тогда как сравнение ниже
+  // `path === 'admin/db'` совпадало — то есть админские выгрузки (аккаунты,
+  // заявки, заказы) открывались без токена. Разделитель внутри сегмента —
+  // всегда попытка обойти маршрутизацию, а не настоящее имя файла: в именах
+  // объектов хранилища и id пакетов слэша быть не может.
+  if (segments.some((part) => part.includes('/') || part.includes('\\'))) {
+    console.warn(`[api] отклонён путь с закодированным разделителем: ${req.url}`)
+    return res.status(400).json({ message: 'Некорректный адрес запроса.' })
+  }
+
   if (segments[0] === 'api') segments = segments.slice(1)
   if (segments[0] === 'router') segments = segments.slice(1)
 
@@ -167,7 +184,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     // здесь неуместен — иначе обучение не сможет сохранить ни один слушатель.
     (segments[0] === 'me' && segments[1] === 'progress') ||
     (segments[0] === 'news' && (segments[2] === 'comments' || segments[2] === 'reactions'))
-  const needsAdmin = segments[0] === 'admin' || (isMutation && !isPublicMutation)
+  // Гард смотрит на собранный путь, а не на segments[0]: так он совпадает
+  // ровно с тем значением, по которому маршруты выбираются ниже, и не может
+  // разойтись с ним из-за хитрого кодирования адреса.
+  const isAdminArea = path === 'admin' || path.startsWith('admin/')
+  const needsAdmin = isAdminArea || (isMutation && !isPublicMutation)
   if (needsAdmin && !requireAdmin(req, res)) return
 
   try {
@@ -1917,10 +1938,16 @@ async function coursesUsingScormPackage(packageId: string): Promise<Course[]> {
   return coursesByPackage.map.get(packageId) ?? []
 }
 
-/** id пакета из ссылки запуска урока (`/scorm-store/<id>/...`). */
+/**
+ * id пакета из ссылки запуска урока (`/scorm-store/<id>/...`).
+ *
+ * Старая форма `/scorm/<id>/...` тоже распознаётся: так курсы, созданные из
+ * пакетов репозитория до того, как их убрали из публичной статики, продолжают
+ * находить свой пакет — и, главное, проходить проверку доступа по нему.
+ */
 function scormPackageIdFromUrl(launchUrl: string | undefined): string | undefined {
   if (!launchUrl) return undefined
-  const m = launchUrl.match(/\/scorm-store\/([^/]+)\//)
+  const m = launchUrl.match(/\/scorm(?:-store)?\/([^/]+)\//)
   if (!m) return undefined
   try {
     return decodeURIComponent(m[1])
@@ -2633,13 +2660,48 @@ async function streamStorageObject(
   key: string,
   req: ApiRequest,
   res: ApiResponse,
-  options: { contentType?: string; download?: string; maxAge?: number } = {},
+  options: StreamOptions = {},
 ): Promise<boolean> {
   const range = typeof req.headers.range === 'string' ? req.headers.range : undefined
   try {
-    const object = await getObject(key, range)
+    return await sendObject(await getObject(key, range), res, options)
+  } catch (err) {
+    // S3 сообщает об отсутствии объекта через name/Code, файловая система —
+    // через code=ENOENT. Отсутствие файла — обычный 404, а не сбой: в лог с
+    // трассировкой попадают только настоящие ошибки чтения.
+    const e = err as { name?: string; Code?: string; code?: string }
+    const code = e.name || e.Code || e.code
+    if (code === 'NoSuchKey' || code === 'NotFound' || e.code === 'ENOENT') return false
+    console.error(`[storage] ошибка чтения «${key}»:`, err)
+    return false
+  }
+}
+
+interface StreamOptions {
+  contentType?: string
+  download?: string
+  maxAge?: number
+  /**
+   * Можно ли складывать ответ в общие кэши. По умолчанию нет: и файлы
+   * материалов, и тем более пакеты SCORM отдаются после проверки прав, а
+   * `Cache-Control: public` разрешал любому промежуточному кэшу сохранить
+   * платный материал и потом отдать его тому, кто за него не платил.
+   */
+  shared?: boolean
+}
+
+/** Отправить уже открытый объект в ответ. Общая часть для хранилища и диска. */
+async function sendObject(
+  object: StoredObject,
+  res: ApiResponse,
+  options: StreamOptions = {},
+): Promise<boolean> {
+  try {
     res.setHeader('Content-Type', options.contentType || object.contentType || 'application/octet-stream')
-    res.setHeader('Cache-Control', `public, max-age=${options.maxAge ?? 3600}`)
+    res.setHeader(
+      'Cache-Control',
+      `${options.shared ? 'public' : 'private'}, max-age=${options.maxAge ?? 3600}`,
+    )
     res.setHeader('Accept-Ranges', 'bytes')
     if (object.contentLength !== undefined) res.setHeader('Content-Length', String(object.contentLength))
     if (object.contentRange) res.setHeader('Content-Range', object.contentRange)
@@ -2658,11 +2720,50 @@ async function streamStorageObject(
     })
     return true
   } catch (err) {
-    const code = (err as { name?: string; Code?: string }).name || (err as { Code?: string }).Code
-    if (code === 'NoSuchKey' || code === 'NotFound') return false
-    console.error(`[storage] ошибка чтения «${key}»:`, err)
+    // Ответ уже начал уходить — переиграть его нечем, остаётся записать причину.
+    console.error('[storage] ошибка передачи файла:', err)
+    return true
+  }
+}
+
+/**
+ * Корень пакетов, лежащих в репозитории.
+ *
+ * Каталог намеренно НЕ в `public/`: всё, что туда попадает, сборщик копирует в
+ * `dist/`, а его раздаёт веб-сервер напрямую — мимо приложения и, значит, мимо
+ * проверки оплаты. Пакеты читаются отсюда только этим модулем и только после
+ * `scormAccess`.
+ */
+function repoScormRoot(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  // В сборке файл лежит в dist-server/api/, при запуске из исходников — в api/.
+  const projectRoot = path.resolve(here, here.includes('dist-server') ? '../..' : '..')
+  return path.join(projectRoot, 'scorm-packages')
+}
+
+/**
+ * Отдать файл пакета, лежащего в репозитории. Возвращает false, если такого
+ * пакета или файла нет, — тогда вызывающий ищет его в хранилище.
+ */
+async function streamRepoScormFile(
+  id: string,
+  rel: string,
+  req: ApiRequest,
+  res: ApiResponse,
+): Promise<boolean> {
+  const root = path.join(repoScormRoot(), id)
+  const full = path.resolve(root, rel)
+  // Страховка на случай, если проверка сегментов выше когда-нибудь ослабнет.
+  if (!full.startsWith(root + path.sep)) return false
+
+  const range = typeof req.headers.range === 'string' ? req.headers.range : undefined
+  let object: StoredObject
+  try {
+    object = await getLocalObject(full, range, scormMime(rel))
+  } catch {
     return false
   }
+  return await sendObject(object, res, { contentType: scormMime(rel) })
 }
 
 /**
@@ -2690,6 +2791,11 @@ async function serveScormFile(id: string, rel: string, req: ApiRequest, res: Api
     return scormErrorPage(res, access.hint, access.status)
   }
 
+  // Пакеты из репозитория лежат на диске рядом с кодом и хранилища не требуют,
+  // поэтому ищем сначала там: так они работают даже когда Object Storage не
+  // настроено, и при этом остаются за проверкой доступа выше.
+  if (await streamRepoScormFile(id, rel, req, res)) return
+
   if (!isStorageConfigured()) {
     return scormErrorPage(res, `Файловое хранилище не настроено. Администратору: ${storageSetupHint()}`)
   }
@@ -2711,6 +2817,21 @@ async function serveScormFile(id: string, rel: string, req: ApiRequest, res: Api
  */
 export async function serveStorageFile(key: string, req: ApiRequest, res: ApiResponse) {
   if (!key) return res.status(404).json({ message: 'Файл не найден' })
+
+  // Раздача ограничена файлами учебных материалов. Без этой рамки маршрут
+  // отдавал ЛЮБОЙ объект хранилища по его ключу, а пакеты SCORM лежат там же
+  // под `scorm/<id>/...` — то есть `/files/scorm/<id>/res/index.html` возвращал
+  // ровно тот файл, который `/scorm-store/<id>/...` закрывает проверкой оплаты.
+  // Файлы материалов публичны осознанно: раздел «Материалы» открыт и гостю.
+  const parts = key.split('/')
+  if (parts.some((part) => part === '..' || part === '.' || part === '')) {
+    return res.status(404).json({ message: 'Файл не найден' })
+  }
+  if (!key.startsWith('materials/')) {
+    console.warn(`[files] отклонён ключ вне раздела материалов: ${key}`)
+    return res.status(404).json({ message: 'Файл не найден' })
+  }
+
   const download = typeof req.query.download === 'string' ? req.query.download : undefined
   const ok = await streamStorageObject(key, req, res, { download, maxAge: 86_400 })
   if (!ok) return res.status(404).json({ message: 'Файл не найден' })

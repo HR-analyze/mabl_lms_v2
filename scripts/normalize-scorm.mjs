@@ -1,5 +1,5 @@
 /**
- * Нормализация SCORM-пакетов в public/scorm перед сборкой.
+ * Нормализация SCORM-пакетов в scorm-packages/ перед сборкой.
  *
  * Экспорт iSpring иногда кладёт скрипты с «обрезанным» расширением (`.j_`
  * вместо `.js`) — так некоторые системы обходят фильтры загрузки. При этом
@@ -10,7 +10,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-const ROOT = path.join(process.cwd(), 'public', 'scorm')
+const ROOT = path.join(process.cwd(), 'scorm-packages')
 
 /** Искажённое расширение → настоящее. */
 const FIX = {
