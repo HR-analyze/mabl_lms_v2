@@ -3,11 +3,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 /**
  * Типы запроса/ответа API.
  *
- * Раньше здесь были `VercelRequest`/`VercelResponse` из `@vercel/node`. После
- * переезда на собственный сервер (Express на VM Yandex Cloud) обработчики
- * получают обычные объекты Express, у которых тот же набор помощников
- * (`status`, `json`, `send`, `redirect`, `req.query`, `req.body`). Поэтому
- * описываем минимальный контракт сами и ни от чего не зависим.
+ * Обработчики получают обычные объекты Express (`status`, `json`, `send`,
+ * `redirect`, `req.query`, `req.body`), но описываем минимальный контракт сами
+ * и ни от чего не зависим: так обработчики остаются проверяемыми в отрыве от
+ * конкретного HTTP-фреймворка.
  */
 
 export interface ApiRequest extends IncomingMessage {

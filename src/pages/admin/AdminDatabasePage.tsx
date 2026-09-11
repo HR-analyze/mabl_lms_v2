@@ -218,9 +218,9 @@ function MailDiagnostics() {
               </ul>
             )}
             <p className="text-sm text-ink-60">
-              Переменные окружения задаются в панели Vercel (Settings → Environment Variables):
-              SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, MAIL_FROM — либо RESEND_API_KEY и
-              MAIL_FROM. После изменения переменных нужен новый деплой.
+              Переменные окружения задаются на сервере в /etc/mabl-lms.env: SMTP_HOST,
+              SMTP_PORT, SMTP_USER, SMTP_PASSWORD, MAIL_FROM — либо RESEND_API_KEY и MAIL_FROM.
+              После изменения нужен перезапуск сервиса: sudo systemctl restart mabl-lms.
             </p>
           </>
         )}

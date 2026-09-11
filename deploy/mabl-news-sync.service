@@ -1,5 +1,5 @@
 # Разовый вызов синхронизации новостей из Telegram-канала.
-# Заменяет Vercel Cron ("crons" в vercel.json: 0 6 * * * /api/news/sync).
+# Расписание задаёт mabl-news-sync.timer.
 
 [Unit]
 Description=MABL LMS: синхронизация новостей из Telegram
@@ -7,6 +7,13 @@ After=network-online.target mabl-lms.service
 
 [Service]
 Type=oneshot
+# CRON_SECRET берётся отсюда же, откуда его читает приложение.
+EnvironmentFile=-/etc/mabl-lms.env
 # Ходим на локальный сервис, не через внешний домен: не зависим от DNS и TLS.
-ExecStart=/usr/bin/curl -fsS --max-time 120 http://127.0.0.1:3000/api/news/sync
+# Заголовок с секретом закрывает маршрут от посторонних вызовов: без него
+# синхронизацию может запустить кто угодно (её сдерживает только лимит частоты).
+# Если CRON_SECRET не задан, заголовок уходит пустым и ничего не ломает.
+ExecStart=/usr/bin/curl -fsS --max-time 120 \
+    -H "Authorization: Bearer ${CRON_SECRET}" \
+    http://127.0.0.1:3000/api/news/sync
 SyslogIdentifier=mabl-news-sync

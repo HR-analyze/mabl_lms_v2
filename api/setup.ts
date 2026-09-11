@@ -3,7 +3,7 @@ import { getSql } from './_db.js'
 import { initDatabase } from './_seed.js'
 
 /**
- * Одноразовая инициализация базы данных Neon.
+ * Одноразовая инициализация базы данных.
  *
  *   POST /api/setup?secret=<SETUP_SECRET>
  *
