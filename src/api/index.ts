@@ -19,7 +19,7 @@ import { paymentsApi } from './payments'
  * Единая точка доступа к данным приложения.
  *
  * Все компоненты и контексты работают только через `api.*` — данные приходят
- * с бэкенда (`/api/*`, serverless-функции Vercel + PostgreSQL Neon).
+ * с бэкенда (`/api/*`, Node + PostgreSQL).
  */
 export const api = {
   auth: authApi,

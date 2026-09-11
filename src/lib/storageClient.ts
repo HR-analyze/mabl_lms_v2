@@ -1,10 +1,9 @@
 /**
  * Клиент файлового хранилища.
  *
- * Раньше браузер грузил файлы напрямую в Vercel Blob через SDK: тело запроса к
- * serverless-функции ограничено 4,5 МБ, и обойти лимит можно было только прямой
- * загрузкой в хранилище. На своём сервере (VM Yandex Cloud) такого лимита нет —
- * файл уходит обычным POST на наш API, а сервер кладёт его в Object Storage.
+ * Файл уходит обычным POST на наш API, а сервер кладёт его в хранилище (диск
+ * ВМ или Object Storage). Потолок размера задают MAX_UPLOAD_MB и
+ * client_max_body_size в nginx.
  */
 
 import { API_URL, getToken } from '@/api/config'
@@ -23,8 +22,6 @@ export interface UploadedObject {
 export interface StoragePreflight {
   admin: boolean
   storage: boolean
-  /** Совместимость с прежним ответом сервера (Vercel Blob). */
-  blob?: boolean
   mode?: 'server'
   maxUploadMb?: number
   storageEnv?: string[]
@@ -48,7 +45,7 @@ export async function storagePreflight(): Promise<StoragePreflight> {
       'Сессия администратора истекла. Выйдите и войдите снова, затем повторите загрузку.',
     )
   }
-  if (!(pre.storage ?? pre.blob)) {
+  if (!pre.storage) {
     const found = pre.storageEnv?.length
       ? ` В окружении сервиса найдены переменные: ${pre.storageEnv.join(', ')}.`
       : ' В окружении сервиса нет ни одной переменной хранилища.'

@@ -1,10 +1,9 @@
 /**
  * Загрузка одиночных файлов в серверное хранилище (Yandex Object Storage).
  *
- * Файл уходит POST'ом на наш API, сервер кладёт его в бакет и возвращает адрес
- * на нашем домене (`/files/<ключ>`). Раньше здесь был SDK Vercel Blob с прямой
- * загрузкой в обход лимита тела запроса в 4,5 МБ — на своём сервере этот лимит
- * отсутствует, потолок задают nginx (client_max_body_size) и MAX_UPLOAD_MB.
+ * Файл уходит POST'ом на наш API, сервер кладёт его в хранилище и возвращает
+ * адрес на нашем домене (`/files/<ключ>`). Потолок размера задают nginx
+ * (client_max_body_size) и MAX_UPLOAD_MB.
  */
 
 import { putToStorage, storagePreflight } from '@/lib/storageClient'
