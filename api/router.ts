@@ -1375,15 +1375,95 @@ async function grantedByUser(): Promise<Map<string, string[]>> {
   return map
 }
 
+/**
+ * Средний прогресс каждого слушателя — тот же, что он видит у себя в кабинете.
+ *
+ * Раньше админка показывала поле `avgProgress` из карточки участника. В него
+ * никто не писал: при регистрации туда клали 0, а дальше значение можно было
+ * только ввести руками. Настоящие отметки лежат в `course_progress` и в
+ * карточку не попадали — поэтому у всех и стоял ноль, пока слушатель у себя
+ * видел честные 18%.
+ *
+ * Считаем ровно по правилам кабинета (ProgressContext + DashboardPage):
+ *   прогресс программы = среднее по ВСЕМ её урокам (пройденный урок — 100),
+ *   общий прогресс     = среднее по программам, открытым слушателю.
+ * Знаменатель — все уроки программы, а не только начатые: иначе один урок из
+ * десяти показывал бы курс завершённым.
+ *
+ * Запросов три, независимо от числа участников: список программ и по одной
+ * выборке на доступы и на отметки.
+ */
+async function avgProgressByUser(userIds: string[]): Promise<Map<string, number>> {
+  const result = new Map<string, number>()
+  if (userIds.length === 0) return result
+
+  const sql = getSql()
+  const courses = await listCourses()
+
+  const lessonsIn = new Map<string, number>()
+  for (const course of courses) {
+    const count = (course.modules ?? []).reduce((n, m) => n + (m.lessons ?? []).length, 0)
+    lessonsIn.set(course.id, count)
+  }
+  // Бесплатная программа открыта любому вошедшему — как и в кабинете.
+  const freeCourseIds = courses.filter(isFreeCourse).map((c) => c.id)
+
+  // Доступы: оплаченный заказ или выдача администратором.
+  const accessRows = await sql`
+    SELECT data->>'userId' AS user_id, data->>'courseId' AS course_id FROM orders
+    WHERE data->>'status' = 'paid'
+    UNION
+    SELECT user_id, course_id FROM course_grants
+  `
+  const accessible = new Map<string, Set<string>>()
+  for (const id of userIds) accessible.set(id, new Set(freeCourseIds))
+  for (const row of accessRows) {
+    const set = accessible.get(row.user_id as string)
+    if (set && row.course_id) set.add(row.course_id as string)
+  }
+
+  // Сумма отметок по урокам в разрезе «слушатель + программа».
+  const progressRows = await sql`SELECT user_id, course_id, data FROM course_progress`
+  const sums = new Map<string, number>()
+  for (const row of progressRows) {
+    const data = (row.data ?? {}) as Partial<StoredProgress>
+    const value = data.completed === true ? 100 : clampPercent(data.progress)
+    const key = `${row.user_id as string}\u0000${row.course_id as string}`
+    sums.set(key, (sums.get(key) ?? 0) + value)
+  }
+
+  for (const userId of userIds) {
+    // Программы, которых уже нет в каталоге, в среднее не входят: иначе
+    // удалённый курс навсегда занижал бы прогресс.
+    const courseIds = Array.from(accessible.get(userId) ?? []).filter((id) => lessonsIn.has(id))
+    if (courseIds.length === 0) {
+      result.set(userId, 0)
+      continue
+    }
+    let total = 0
+    for (const courseId of courseIds) {
+      const lessons = lessonsIn.get(courseId) ?? 0
+      if (lessons === 0) continue
+      const sum = sums.get(`${userId}\u0000${courseId}`) ?? 0
+      total += Math.min(100, Math.round(sum / lessons))
+    }
+    result.set(userId, Math.round(total / courseIds.length))
+  }
+  return result
+}
+
 async function listParticipants(): Promise<AdminUser[]> {
   const sql = getSql()
   await ensureSchema(sql)
   const rows = await sql`SELECT data FROM participants ORDER BY sort_order ASC`
   const granted = await grantedByUser()
-  return rows.map((r) => {
-    const participant = r.data as AdminUser
-    return { ...participant, enrolledCourseIds: granted.get(participant.id) ?? [] }
-  })
+  const participants = rows.map((r) => r.data as AdminUser)
+  const progress = await avgProgressByUser(participants.map((p) => p.id))
+  return participants.map((participant) => ({
+    ...participant,
+    enrolledCourseIds: granted.get(participant.id) ?? [],
+    avgProgress: progress.get(participant.id) ?? 0,
+  }))
 }
 
 async function getParticipant(id: string): Promise<AdminUser | undefined> {
@@ -1393,7 +1473,12 @@ async function getParticipant(id: string): Promise<AdminUser | undefined> {
   if (!rows[0]) return undefined
   const participant = rows[0].data as AdminUser
   const granted = await sql`SELECT course_id FROM course_grants WHERE user_id = ${id}`
-  return { ...participant, enrolledCourseIds: granted.map((g) => g.course_id as string) }
+  const progress = await avgProgressByUser([id])
+  return {
+    ...participant,
+    enrolledCourseIds: granted.map((g) => g.course_id as string),
+    avgProgress: progress.get(id) ?? 0,
+  }
 }
 
 /**
@@ -1455,9 +1540,13 @@ async function updateParticipant(id: string, req: ApiRequest, res: ApiResponse) 
           (g) => g.course_id as string,
         ) as string[])
   next.enrolledCourseIds = []
+  // Прогресс тоже производный — он считается по course_progress. Хранить его
+  // копию в карточке значит завести второе, расходящееся значение.
+  next.avgProgress = 0
 
   await sql`UPDATE participants SET data = ${JSON.stringify(next)}::jsonb, updated_at = NOW() WHERE id = ${id}`
-  return res.json({ ...next, enrolledCourseIds: enrolled })
+  const progress = await avgProgressByUser([id])
+  return res.json({ ...next, enrolledCourseIds: enrolled, avgProgress: progress.get(id) ?? 0 })
 }
 
 async function setParticipantStatus(id: string, status: string, res: ApiResponse) {

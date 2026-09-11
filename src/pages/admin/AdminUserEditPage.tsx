@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useCourses } from '@/context/CoursesContext'
 import { api } from '@/api'
 import { useAsync } from '@/hooks/useAsync'
@@ -86,11 +87,6 @@ export default function AdminUserEditPage() {
       }
     })
 
-  const num = (value: string) => {
-    const n = Number(value.replace(/\s/g, ''))
-    return Number.isFinite(n) ? n : 0
-  }
-
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
@@ -108,8 +104,9 @@ export default function AdminUserEditPage() {
       ...form,
       name: form.name.trim(),
       email: form.email.trim(),
-      // У администратора нет учебного прогресса и записей на программы.
-      avgProgress: isAdmin ? 0 : Math.min(100, Math.max(0, form.avgProgress)),
+      // Прогресс считает сервер по отметкам слушателя; значение из формы он
+      // игнорирует, здесь оно только чтобы не ломать тип.
+      avgProgress: 0,
       enrolledCourseIds: isAdmin ? [] : form.enrolledCourseIds,
     }
 
@@ -187,14 +184,18 @@ export default function AdminUserEditPage() {
 
         {form.role === 'student' && (
           <>
-            <Input
-              label="Средний прогресс, % (0–100)"
-              type="number"
-              min={0}
-              max={100}
-              value={String(form.avgProgress)}
-              onChange={(e) => set('avgProgress', num(e.target.value))}
-            />
+            {/* Прогресс не редактируется: он считается по отметкам слушателя
+                (course_progress) и показывается здесь только для справки. */}
+            <div>
+              <span className="mb-2 block text-[0.72rem] uppercase tracking-wide text-ink-60">
+                Средний прогресс обучения
+              </span>
+              <ProgressBar value={form.avgProgress} showLabel />
+              <p className="mt-2 text-[0.78rem] text-ink-60">
+                Считается автоматически по пройденным урокам открытых программ — то же
+                значение слушатель видит у себя в кабинете.
+              </p>
+            </div>
 
             <div>
               <span className="mb-2 block text-[0.72rem] uppercase tracking-wide text-ink-60">
