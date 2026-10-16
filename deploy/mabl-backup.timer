@@ -1,0 +1,19 @@
+# Ежедневная резервная копия в 00:30 UTC (03:30 МСК).
+#
+# Установка (bootstrap.sh делает это сам):
+#   sudo cp deploy/mabl-backup.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now mabl-backup.timer
+#   systemctl list-timers mabl-backup.timer
+
+[Unit]
+Description=MABL LMS: ежедневная резервная копия
+
+[Timer]
+OnCalendar=*-*-* 00:30:00 UTC
+# Если VM была выключена в момент запуска — выполнить сразу после старта.
+Persistent=true
+Unit=mabl-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,395 +1,407 @@
-# Развёртывание МАБЛ LMS на VM Yandex Cloud
+# Развёртывание МАБЛ LMS на VM (RelaxDEV)
 
-Пошаговая инструкция: что нажать в консоли Yandex Cloud и какие команды выполнить
-на сервере. Все команды проверяемые — после каждого блока указано, как убедиться,
-что шаг сработал.
+Пошаговый переезд на новую виртуальную машину у провайдера RelaxDEV. Прежняя
+VM в Yandex Cloud потеряна вместе с Managed PostgreSQL и Object Storage,
+поэтому новая схема живёт целиком на одной машине и не зависит от облачных
+сервисов конкретного провайдера. Домен остаётся прежним — **course.mabl.ru**.
+
+После каждого блока указано, как убедиться, что шаг сработал.
 
 **Архитектура:**
 
 | Слой | Чем обслуживается |
 |---|---|
-| Фронтенд | статика `dist/`, раздаёт nginx на VM |
-| API | один процесс Node (Express) на порту 3000, под systemd |
-| База | Managed Service for PostgreSQL, драйвер `pg` |
-| Файлы | диск ВМ или Object Storage (S3), приватный бакет |
-| Маршруты | nginx + `server/index.ts` |
-| Расписание | systemd-таймер `mabl-news-sync.timer` |
+| Фронтенд | статика `dist/`, раздаёт nginx |
+| API | один процесс Node (Express) на `127.0.0.1:3000`, под systemd |
+| База | PostgreSQL 16 на той же VM, слушает только localhost |
+| Файлы | диск VM, каталог `/srv/mabl-lms/storage` |
+| TLS | Let's Encrypt через certbot |
+| Расписание | systemd-таймеры: новости (`mabl-news-sync`), бэкап (`mabl-backup`) |
 
 Термины: **VM** (virtual machine, виртуальная машина) — арендованный сервер;
-**Object Storage** — файловое хранилище, совместимое с протоколом S3;
-**systemd** — стандартный менеджер сервисов Linux, следит, чтобы приложение
-работало и перезапускалось после сбоя.
+**systemd** — менеджер сервисов Linux, перезапускает приложение после сбоя;
+**nginx** — веб-сервер перед приложением; **DNS** — система, которая
+превращает `course.mabl.ru` в IP-адрес машины.
+
+Почти всю установку делает один скрипт — `deploy/bootstrap.sh`. Ручными
+остаются только данные, секреты внешних сервисов, DNS и сертификат.
 
 ---
 
 ## 0. Что нужно приготовить заранее
 
-1. Доступ к консоли Yandex Cloud с правами на создание ресурсов.
-2. SSH-доступ к VM:
-   ```powershell
-   ssh -i "%USERPROFILE%\.ssh\ssh-key-1787832426561-hr-ai-01" user-hr@37.230.169.206
-   ```
-3. Домен и доступ к его DNS-записям.
-4. Значения секретов приложения — список в разделе 4. Главный из них —
-   `AUTH_SECRET`: его смена разлогинивает всех пользователей, поэтому при
-   переустановке сервера значение переносят как есть, а не генерируют заново.
+1. **VM в RelaxDEV:** Ubuntu 24.04 LTS (подходят 22.04 и Debian 12),
+   от 2 vCPU / 2–4 ГБ RAM, диск от 40 ГБ (SCORM-пакеты + бэкапы),
+   публичный IPv4, вход по SSH-ключу.
+2. **Доступ к DNS зоны `mabl.ru`** — чтобы перевести `course.mabl.ru` на новый IP.
+3. **Ключи внешних сервисов:** ЮKassa (`YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY`),
+   почта (SMTP или Resend), канал Telegram.
+4. **Данные со старого сервера, если хоть что-то уцелело** — см. раздел 1.
 
 ---
 
-## 1. Managed Service for PostgreSQL
+## 1. Ревизия данных: что можно спасти
 
-Консоль YC → **Managed Service for PostgreSQL** → «Создать кластер».
+Код и SCORM-пакеты из каталога `scorm-packages/` лежат в git — они вернутся
+сами. Всё остальное (пользователи, заказы, прогресс, новости, материалы,
+загруженные через админку файлы) жило в БД и хранилище старой машины.
 
-| Параметр | Значение |
-|---|---|
-| Имя кластера | `mabl-lms-db` |
-| Версия | PostgreSQL 16 |
-| Класс хоста | s3-c2-m8 (2 vCPU, 8 ГБ) или меньше — `b2.medium` для старта |
-| Размер хранилища | 20 ГБ, network-ssd |
-| Сеть | **та же, что у VM** (VM смотрит в подсеть с адресом 10.129.0.12) |
-| Зона доступности | та же, что у VM |
-| Имя БД | `mabl` |
-| Пользователь | `mabl`, пароль — сгенерировать длинный |
-| Публичный доступ к хосту | выключен (VM ходит по внутренней сети) |
-| Резервное копирование | включено, срок 7–30 дней |
+Проверьте источники по порядку, прежде чем начинать с пустой базы:
 
-После создания: кластер → **Хосты** → скопируйте FQDN вида
-`rc1a-xxxxxxxxxxxx.mdb.yandexcloud.net`. Порт — **6432**.
+| Источник | Где смотреть | Что даёт |
+|---|---|---|
+| Managed PostgreSQL | консоль YC → кластер `mabl-lms-db` → «Резервные копии» | восстановить копию в новый кластер и снять `pg_dump` |
+| Локальные дампы | `/var/backups/mabl/*.dump` на диске старой VM (или снимке диска) | готовый дамп |
+| Object Storage | бакет `mabl-lms-files` | файлы SCORM/материалов, если хранилище было S3 |
+| Каталог `storage` | `/srv/mabl-lms/storage` на диске старой VM | файлы, если хранилище было на диске |
+| `/etc/mabl-lms.env` | старая VM, менеджер паролей, переписка | прежний `AUTH_SECRET`, ключи ЮKassa и SMTP |
 
-Разрешите VM ходить в кластер: в группе безопасности кластера должно быть
-правило «входящий TCP 6432 из подсети VM» (или из группы безопасности VM).
-
----
-
-## 2. Object Storage (файловое хранилище)
-
-1. Консоль YC → **Object Storage** → «Создать бакет».
-   - Имя: `mabl-lms-files` (имя глобально уникальное — при занятости добавьте суффикс).
-   - Доступ на чтение объектов: **закрытый**. Наружу файлы отдаёт приложение,
-     поэтому публичность не нужна.
-   - Класс хранения: стандартный.
-2. Консоль YC → **Сервисные аккаунты** → «Создать»:
-   - Имя: `mabl-lms-storage`, роль: `storage.editor`.
-3. Откройте созданный сервисный аккаунт → «Создать новый ключ» →
-   **статический ключ доступа**. Сохраните `key_id` и `secret` — секрет
-   показывается один раз.
-
----
-
-## 3. Подготовка VM
-
-Подключитесь к серверу и выполните:
+Если доступ к консоли YC вернётся хотя бы на чтение, дамп снимается так
+(с любой машины, куда пустит группа безопасности кластера):
 
 ```bash
-# --- системные обновления и базовые пакеты ---
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y curl git nginx postgresql-client-16
-
-# --- Node.js 22 LTS ---
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt install -y nodejs
-node -v && npm -v      # ожидаем v22.x и 10.x
-
-# --- корневой сертификат Яндекса для TLS-подключения к БД ---
-sudo mkdir -p /etc/ssl/certs
-sudo curl -fsSL https://storage.yandexcloud.net/cloud-certs/CA.pem \
-  -o /etc/ssl/certs/yandex-root.crt
-sudo chmod 644 /etc/ssl/certs/yandex-root.crt
+pg_dump "postgresql://mabl:ПАРОЛЬ@rc1a-xxxx.mdb.yandexcloud.net:6432/mabl?sslmode=require" \
+  --format=custom --no-owner --file=mabl-backup.dump
 ```
 
-Проверка Node: `node -v` печатает `v22.*`.
+**Если ничего не уцелело** — стартуем с пустой базы (раздел 5, вариант Б).
+Это значит: все слушатели регистрируются заново, доступы к курсам выдаются
+вручную из админки. История оплат сохранилась в личном кабинете ЮKassa —
+по ней восстанавливаются оплаченные доступы.
 
-### 3.1. Код с GitHub
+> Прежний `AUTH_SECRET` нужен только для того, чтобы не разлогинить
+> пользователей. Если он потерян — ничего страшного, генерируется новый
+> (bootstrap делает это сам), все просто войдут заново.
+
+---
+
+## 2. Первый вход на VM и пользователь для сервиса
+
+Сервис работает под обычным пользователем с `sudo`, не под root. Если
+RelaxDEV выдал только root:
 
 ```bash
-sudo mkdir -p /srv/mabl-lms
-sudo chown user-hr:user-hr /srv/mabl-lms
+ssh root@НОВЫЙ_IP
+adduser deploy
+usermod -aG sudo deploy
+mkdir -p /home/deploy/.ssh
+cp ~/.ssh/authorized_keys /home/deploy/.ssh/
+chown -R deploy:deploy /home/deploy/.ssh && chmod 700 /home/deploy/.ssh
+exit
+ssh deploy@НОВЫЙ_IP
+```
+
+Проверка: `sudo -v` проходит, `whoami` печатает `deploy`.
+
+Дальше в инструкции пользователь называется `deploy`; если у вас другой —
+подставьте свой.
+
+---
+
+## 3. Проверки сети с VM
+
+До установки убедитесь, что машина дотягивается до всего, что нужно.
+VPS-провайдеры нередко режут исходящую почту, а часть зарубежных хостов
+может быть недоступна.
+
+```bash
+for u in https://github.com https://deb.nodesource.com https://apt.postgresql.org \
+         https://registry.npmjs.org https://api.yookassa.ru https://t.me/s/mabl_academy \
+         https://acme-v02.api.letsencrypt.org/directory; do
+  printf '%-55s ' "$u"; curl -s -o /dev/null -m 10 -w '%{http_code}\n' "$u" || echo FAIL
+done
+
+# Исходящий SMTP (подставьте своего провайдера почты)
+timeout 5 bash -c '</dev/tcp/smtp.yandex.ru/465' && echo "SMTP 465 открыт" || echo "SMTP 465 ЗАКРЫТ"
+```
+
+Что делать при FAIL:
+
+| Хост | Последствие | Обход |
+|---|---|---|
+| github.com / npm / nodesource / PGDG | не установится | обращение в поддержку RelaxDEV |
+| api.yookassa.ru | не работает оплата | обращение в поддержку RelaxDEV |
+| t.me | не импортируются новости | сайт работает, новости ведутся вручную |
+| SMTP закрыт | не уходят письма сброса пароля | попросить открыть порт или взять `RESEND_API_KEY` (HTTPS) |
+
+---
+
+## 4. Установка одним скриптом
+
+```bash
+sudo apt update && sudo apt install -y git
+sudo mkdir -p /srv/mabl-lms && sudo chown "$USER:$USER" /srv/mabl-lms
 git clone https://github.com/HR-analyze/mabl_lms_v2.git /srv/mabl-lms
 cd /srv/mabl-lms
-git checkout main         # или ветку миграции, пока PR не влит
-npm ci
+sudo DOMAIN=course.mabl.ru ./deploy/bootstrap.sh
 ```
 
-Проверка: `ls /srv/mabl-lms/server/index.ts` — файл существует.
+> Пока PR с этой инструкцией не влит в `main`, добавьте ветку:
+> `git clone -b claude/site-migration-relaxdev-2oi9if ...` и
+> `sudo BRANCH=claude/site-migration-relaxdev-2oi9if DOMAIN=course.mabl.ru ./deploy/bootstrap.sh`.
+
+Скрипт (подробности — в шапке `deploy/bootstrap.sh`):
+
+1. включает swap, если RAM меньше 3 ГБ — иначе сборка падает по нехватке памяти;
+2. ставит nginx, certbot, ufw, rsync, Node.js 22 и PostgreSQL 16;
+3. создаёт локальную БД `mabl` и пользователя `mabl` со случайным паролем;
+4. создаёт `/etc/mabl-lms.env` (chmod 600) с паролем БД и сгенерированными
+   `AUTH_SECRET`, `SETUP_SECRET`, `CRON_SECRET` — **только если файла ещё нет**;
+5. собирает приложение, ставит systemd-юниты, включает таймеры;
+6. ставит конфиг nginx на домен `course.mabl.ru`;
+7. открывает в ufw (файрвол) только SSH, 80 и 443.
+   Если у RelaxDEV свой файрвол в панели — откройте там те же порты, а ufw
+   можно пропустить: `SKIP_UFW=1`.
+
+Повторный запуск безопасен: существующие env, клон и server-блок nginx не
+перезаписываются.
+
+Проверка:
+
+```bash
+curl -s http://127.0.0.1:3000/healthz                 # {"ok":true,...}
+systemctl is-active mabl-lms postgresql nginx          # три раза active
+systemctl list-timers 'mabl-*' --no-pager              # два таймера
+```
 
 ---
 
-## 4. Переменные окружения
+## 5. Данные
+
+### Вариант А. Есть дамп
+
+Скопируйте дамп (и архив файлов, если есть) на VM со своей машины:
+
+```powershell
+scp mabl-backup.dump deploy@НОВЫЙ_IP:~/
+scp storage.tar.gz   deploy@НОВЫЙ_IP:~/
+```
+
+Восстановление БД. Строку подключения достаём из env точечно: файл целиком
+через `.` в shell не читается — значения вроде `MAIL_FROM=МАБЛ <noreply@...>`
+ломают разбор.
 
 ```bash
-sudo cp /srv/mabl-lms/deploy/mabl-lms.env.example /etc/mabl-lms.env
-sudo chmod 600 /etc/mabl-lms.env
+DB_URL="$(sudo grep -m1 '^DATABASE_URL=' /etc/mabl-lms.env | cut -d= -f2-)"
+sudo systemctl stop mabl-lms
+pg_restore --dbname="$DB_URL" --no-owner --no-privileges --clean --if-exists \
+  --verbose ~/mabl-backup.dump
+sudo systemctl start mabl-lms
+```
+
+Ошибки вида `role "..." does not exist` из-за прав Managed PG безвредны —
+`--no-owner --no-privileges` их и гасят. Проверка:
+
+```bash
+psql "$DB_URL" -c "\dt"
+psql "$DB_URL" -c "SELECT collection, count(*) FROM content GROUP BY 1 ORDER BY 1;"
+psql "$DB_URL" -c "SELECT count(*) FROM users;"
+```
+
+Ожидаем таблицы `courses`, `users`, `news`, `news_comments`, `news_reactions`,
+`participants`, `orders`, `content`, `course_progress`. Недостающие таблицы
+приложение создаст само при первом запросе (`ensureSchema`).
+
+Файлы с диска старой VM:
+
+```bash
+sudo tar -C /srv/mabl-lms -xzf ~/storage.tar.gz          # распакуется в storage/
+sudo chown -R deploy:deploy /srv/mabl-lms/storage
+```
+
+Файлы из бакета Object Storage — любым S3-клиентом в `storage/objects`:
+ключ объекта в бакете и путь файла на диске совпадают
+(`api/_storage.ts`, `diskPathFor`).
+
+```bash
+# пример с rclone, настроенным на бакет (remote yc:)
+rclone copy yc:mabl-lms-files /srv/mabl-lms/storage/objects
+sudo chown -R deploy:deploy /srv/mabl-lms/storage
+```
+
+Типы содержимого S3 хранит у себя, а на диске — в параллельном дереве
+`storage/meta/`, которого при таком копировании не будет. Это не ломает
+раздачу: тип определится по расширению. Но у файлов материалов без
+расширения браузер может предложить скачивание вместо просмотра — такие
+файлы проще перезалить через админку.
+
+### Вариант Б. Чистый старт
+
+```bash
+SETUP_SECRET="$(sudo grep -m1 '^SETUP_SECRET=' /etc/mabl-lms.env | cut -d= -f2-)"
+curl -s -X POST "http://127.0.0.1:3000/api/setup?secret=$SETUP_SECRET"
+```
+
+В ответе — `adminEmail` и, если `ADMIN_PASSWORD` не задан, сгенерированный
+`adminPassword`. **Он показывается один раз** — сохраните. Сразу после входа
+смените пароль в разделе «База данных» админки.
+
+---
+
+## 6. Секреты внешних сервисов
+
+```bash
 sudo nano /etc/mabl-lms.env
+sudo systemctl restart mabl-lms
 ```
 
 Заполните:
 
-- `DATABASE_URL` — `postgresql://mabl:ПАРОЛЬ@rc1a-xxxx.mdb.yandexcloud.net:6432/mabl?sslmode=verify-full`
-- `DATABASE_CA_FILE=/etc/ssl/certs/yandex-root.crt`
-- `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` — из шага 2
-- `AUTH_SECRET` — `openssl rand -base64 48`. При переустановке сервера
-  перенесите ПРЕЖНЕЕ значение: новое разлогинит всех слушателей
 - `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY` — боевая оплата
-- `TELEGRAM_CHANNEL` — импорт новостей
-- `CRON_SECRET` — закрывает маршрут синхронизации новостей (раздел 8)
-- `ADMIN_EMAIL`, `SETUP_SECRET` — стартовый администратор и инициализация БД
+- `SMTP_*` и `MAIL_FROM` **или** `RESEND_API_KEY` — письма
+- `ADMIN_EMAIL` — до инициализации БД (вариант Б), если не `admin@mabl.ru`
+- `BACKUP_RSYNC_TARGET` — копия бэкапов вне машины (раздел 10)
+- если нашёлся прежний `AUTH_SECRET` — верните его, тогда старые сессии оживут
 
-Проверка подключения к БД:
+`SITE_URL` уже стоит `https://course.mabl.ru`. Не меняйте его на `mabl.ru`:
+из него строятся ссылки сброса пароля и возврат после оплаты.
 
-```bash
-set -a; . /etc/mabl-lms.env; set +a
-psql "$DATABASE_URL" -c "SELECT version();"
-```
+**Сохраните копию `/etc/mabl-lms.env` вне сервера** (менеджер паролей).
+В прошлый раз секреты пропали вместе с машиной.
 
-Должна напечататься версия PostgreSQL. Если висит без ответа — не открыт порт
-6432 в группе безопасности кластера.
-
----
-
-## 5. Данные: восстановление из резервной копии
-
-Нужно, только если разворачиваете сервер заново или поднимаете базу из бэкапа
-(как их снимать — раздел 12). На чистой установке пропустите: схему приложение
-создаст само, а стартового администратора заведёт инициализация из раздела 6.
-
-```bash
-cd ~
-# дамп скопируйте на VM, например через scp с локальной машины:
-#   scp -i "%USERPROFILE%\.ssh\ssh-key-..." mabl-backup.dump user-hr@37.230.169.206:~/
-
-set -a; . /etc/mabl-lms.env; set +a
-pg_restore --dbname="$DATABASE_URL" --no-owner --no-privileges --clean --if-exists \
-  --verbose mabl-backup.dump
-```
-
-Проверка — таблицы и количество строк:
-
-```bash
-psql "$DATABASE_URL" -c "\dt"
-psql "$DATABASE_URL" -c "SELECT collection, count(*) FROM content GROUP BY collection ORDER BY 1;"
-psql "$DATABASE_URL" -c "SELECT count(*) FROM users;"
-```
-
-Ожидаем таблицы `courses`, `users`, `news`, `news_comments`, `news_reactions`,
-`participants`, `orders`, `content`, `course_progress`.
-
-> Если в дампе не хватает какой-то таблицы (например, `course_progress` —
-> она появилась позже остальных), приложение создаст её само при первом
-> запросе (`ensureSchema`), отдельная миграция не нужна.
-
-### Файловое хранилище
-
-Файлы SCORM-пакетов и материалов по умолчанию лежат на диске VM — в каталоге
-`storage` рядом с приложением (`/srv/mabl-lms/storage`) или там, куда указывает
-`STORAGE_DIR`. Никаких ключей и внешних сервисов для этого не нужно, каталог
-создаётся при первой загрузке.
-
-Проверить, что сервис пишет туда, куда ожидается:
-
-```bash
-sudo -u user-hr ls -la /srv/mabl-lms/storage/objects 2>/dev/null || echo 'каталога ещё нет — ничего не загружали'
-df -h /srv
-```
-
-Каталог не отслеживается git, поэтому `deploy/deploy.sh` его не трогает. При
-переносе на другую машину копируйте его вместе с дампом базы:
-
-```bash
-sudo tar -C /srv/mabl-lms -czf /var/backups/mabl/storage-$(date +%F).tar.gz storage
-```
-
-Object Storage (`S3_BUCKET` и ключи) остаётся опцией — включайте, когда машин
-станет больше одной. Смена бэкенда файлы не переносит: пакеты придётся залить
-заново через админку.
-
-> Если дампа нет и база создаётся с нуля — пропустите этот шаг: приложение само
-> создаст схему при первом запуске (`POST /api/setup?secret=$SETUP_SECRET`).
+Проверка: `journalctl -u mabl-lms -n 50 --no-pager` — без ошибок; в админке
+«База данных» → «Отправка писем» показывает, что почта настроена.
 
 ---
 
-## 6. Сборка и запуск сервиса
+## 7. Приёмочная проверка до переключения DNS
+
+nginx отдаёт сайт и по IP (стандартный server-блок удалён, наш стал
+единственным), поэтому проверять можно в браузере по `http://НОВЫЙ_IP/`.
+
+> Не проверяйте через подмену `course.mabl.ru` в файле hosts: браузер,
+> который уже открывал сайт по HTTPS, запомнил HSTS и не пустит на
+> HTTP-версию, а сертификата до переключения DNS ещё нет.
+
+- [ ] Главная открывается, стили и шрифты на месте
+- [ ] Вход администратора работает
+- [ ] Программы, новости, материалы отображаются из БД
+- [ ] SCORM-курс открывается и **отмечает прогресс**
+- [ ] Файл материала скачивается по `/files/...`
+- [ ] Загрузка нового SCORM-пакета через админку проходит до конца
+- [ ] Заявка со страницы программы создаётся
+- [ ] `journalctl -u mabl-lms -n 100` — без ошибок
+
+Оплату по IP не проверяйте: ЮKassa вернёт пользователя на `SITE_URL`, то есть
+на старый адрес. Её очередь — после DNS (раздел 9).
+
+---
+
+## 8. Переключение DNS и TLS
+
+1. В DNS зоны `mabl.ru` снизьте TTL записи `course` до 300 секунд (если
+   старая запись всё равно никуда не ведёт, ждать сутки смысла нет).
+2. A-запись `course.mabl.ru` → `НОВЫЙ_IP`.
+3. **Удалите AAAA-запись `course`, если она есть** и вела на IPv6 старой VM:
+   иначе часть посетителей и сам Let's Encrypt пойдут по IPv6 в никуда.
+4. Дождитесь распространения:
+   ```bash
+   dig +short course.mabl.ru A      # новый IP
+   dig +short course.mabl.ru AAAA   # пусто (или IPv6 новой VM)
+   ```
+5. Сертификат:
+   ```bash
+   sudo certbot --nginx -d course.mabl.ru
+   sudo systemctl status certbot.timer --no-pager    # автопродление
+   ```
+   certbot допишет в `/etc/nginx/sites-available/mabl-lms` блок `listen 443`
+   и редирект с 80 — **этот файл после этого из репозитория не копируют**
+   (см. раздел 11).
+6. Проверка:
+   ```bash
+   curl -sI https://course.mabl.ru/ | head -1        # HTTP/2 200 или HTTP/1.1 200
+   curl -s https://course.mabl.ru/healthz
+   ```
+
+---
+
+## 9. ЮKassa
+
+Домен не менялся, поэтому URL вебхука прежний. Убедитесь, что он на месте:
+личный кабинет ЮKassa → Магазин → Интеграция → HTTP-уведомления →
+`https://course.mabl.ru/api/payments/webhook`.
+
+Проведите **боевой платёж на минимальную сумму** и проверьте, что заказ
+перешёл в статус «оплачен», а после оплаты браузер вернулся на
+`course.mabl.ru`.
+
+---
+
+## 10. Резервные копии
+
+Managed-бэкапов больше нет — копии делает таймер `mabl-backup.timer`
+(ежедневно в 03:30 МСК, скрипт `deploy/backup.sh`): дамп БД (хранится 14 дней)
+и архив `storage` (3 дня) в `/var/backups/mabl`.
+
+**Копия на той же машине от её потери не спасает.** Настройте копию наружу —
+на любой другой сервер с SSH:
 
 ```bash
-cd /srv/mabl-lms
-npm run build            # собирает фронтенд (dist/) и сервер (dist-server/)
-
-sudo cp deploy/mabl-lms.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now mabl-lms
-sudo systemctl status mabl-lms --no-pager
+sudo ssh-keygen -t ed25519 -N '' -f /root/.ssh/id_ed25519   # если ключа нет
+sudo cat /root/.ssh/id_ed25519.pub     # → в authorized_keys на сервере бэкапов
+sudo nano /etc/mabl-lms.env            # BACKUP_RSYNC_TARGET=backup@host:/backups/mabl-lms/
 ```
 
 Проверка:
 
 ```bash
-curl -s http://127.0.0.1:3000/healthz        # {"ok":true,"uptime":...}
-curl -s http://127.0.0.1:3000/api/courses | head -c 300
+sudo systemctl start mabl-backup
+journalctl -u mabl-backup -n 20 --no-pager
+ls -lh /var/backups/mabl
 ```
 
-Логи в реальном времени: `journalctl -u mabl-lms -f`
+Дополнительно включите снимки диска в панели RelaxDEV, если они там есть.
+Не могу подтвердить, что у RelaxDEV есть такая функция, — уточните у провайдера.
+
+Раз в месяц проверяйте, что копия восстанавливается (раздел 5А на пустую БД):
+непроверенный бэкап — это надежда, а не бэкап.
 
 ---
 
-## 7. nginx и TLS
-
-Конфиг разложен на два файла, и это важно:
-
-| Файл | Что внутри | Когда копировать |
-|---|---|---|
-| `deploy/mabl-lms-app.conf` | заголовки, маршруты, статика, SPA | при каждом обновлении — безопасно |
-| `deploy/nginx-mabl-lms.conf` | `listen`, `server_name`, TLS от certbot | **один раз**, при установке |
-
-Второй файл трогать после установки нельзя: в нём живут домен и TLS-секция,
-которую дописывает certbot. Копирование его поверх рабочего конфига стирает и
-то и другое — домен перестаёт совпадать, 443-й порт уходит в чужой server-блок,
-и сайт открывается чужой страницей с ошибкой сертификата.
-
-Первая установка:
-
-```bash
-sudo mkdir -p /etc/nginx/snippets
-sudo cp /srv/mabl-lms/deploy/mabl-lms-app.conf /etc/nginx/snippets/mabl-lms-app.conf
-sudo cp /srv/mabl-lms/deploy/nginx-mabl-lms.conf /etc/nginx/sites-available/mabl-lms
-sudo nano /etc/nginx/sites-available/mabl-lms      # подставить свой домен в server_name
-sudo ln -sf /etc/nginx/sites-available/mabl-lms /etc/nginx/sites-enabled/mabl-lms
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-Обновление правил раздачи в дальнейшем — только сниппет:
-
-```bash
-sudo cp /srv/mabl-lms/deploy/mabl-lms-app.conf /etc/nginx/snippets/mabl-lms-app.conf
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-Проверка по IP (до переключения DNS):
-
-```bash
-curl -s -o /dev/null -w "%{http_code}\n" http://37.230.169.206/
-curl -s http://37.230.169.206/healthz
-```
-
-Сертификат Let's Encrypt (после того, как домен начнёт указывать на VM):
-
-```bash
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d course.mabl.ru
-sudo systemctl status certbot.timer     # автопродление
-```
-
-> Если TLS-секцию всё же затёрли — сертификат цел, он лежит в `/etc/letsencrypt`
-> и nginx его не трогает. Верните правильный `server_name` и повторите команду
-> `certbot --nginx`; на вопрос о существующем сертификате выбирайте
-> **«Attempt to reinstall this existing certificate»** — перевыпускать нечего,
-> а второй вариант зря расходует лимит Let's Encrypt.
-
-> Certificate Manager Яндекса здесь не подходит: он выдаёт сертификаты для
-> Application Load Balancer и CDN, а не для nginx на «голой» VM.
-
----
-
-## 8. Ежедневная синхронизация новостей
-
-```bash
-sudo cp /srv/mabl-lms/deploy/mabl-news-sync.service /etc/systemd/system/
-sudo cp /srv/mabl-lms/deploy/mabl-news-sync.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now mabl-news-sync.timer
-systemctl list-timers mabl-news-sync.timer --no-pager
-```
-
-Проверка вручную: `sudo systemctl start mabl-news-sync && journalctl -u mabl-news-sync -n 20`
-
-> Задайте `CRON_SECRET` в `/etc/mabl-lms.env`: таймер присылает его в заголовке
-> `Authorization`, и маршрут закрывается от посторонних. Без секрета запустить
-> синхронизацию может кто угодно — её сдерживает только лимит частоты, а каждый
-> вызов ходит в Telegram и переписывает таблицу новостей.
-
-Отдельно убедитесь, что с VM вообще доступен Telegram:
-
-```bash
-curl -s -o /dev/null -w "%{http_code}\n" https://t.me/s/mabl_academy
-```
-
-Если код не 200 — импорт новостей работать не будет; это ограничение сети, а не кода.
-
----
-
-## 9. Приёмочная проверка перед переключением DNS
-
-Проверяйте по IP или временному поддомену:
-
-- [ ] Главная открывается, стили и шрифты на месте
-- [ ] Вход администратора работает (прежние сессии живы, если `AUTH_SECRET` не менялся)
-- [ ] Список программ, новости, материалы отображаются из БД
-- [ ] SCORM-курс открывается и **отмечает прогресс** (проверка same-origin)
-- [ ] Файл материала скачивается по ссылке `/files/...`
-- [ ] Загрузка нового SCORM-пакета через админку проходит до конца
-- [ ] Заявка со страницы программы создаётся (`POST /api/applications`)
-- [ ] `journalctl -u mabl-lms -n 100` — без ошибок
-
----
-
-## 10. Переключение домена и ЮKassa
-
-1. **За сутки** снизьте TTL DNS-записи до 300 секунд.
-2. Направьте A-запись домена на `37.230.169.206`.
-3. Дождитесь распространения: `dig +short course.mabl.ru`
-4. Выпустите TLS-сертификат (шаг 7).
-5. **ЮKassa** → Личный кабинет → Магазин → Интеграция → HTTP-уведомления:
-   URL вебхука — `https://course.mabl.ru/api/payments/webhook`.
-6. Проведите **боевой платёж на минимальную сумму** и убедитесь, что заказ
-   перешёл в статус «оплачен».
-
----
-
-## 11. Обновление кода в дальнейшем
-
-Код по-прежнему живёт на GitHub. Деплой — одна команда на сервере:
+## 11. Обновление кода
 
 ```bash
 cd /srv/mabl-lms && ./deploy/deploy.sh main
 ```
 
 Скрипт забирает ветку, ставит зависимости, собирает и перезапускает сервис,
-после чего ждёт ответа от `/healthz`.
+ждёт ответа `/healthz`, а при ошибке сборки возвращает код на прежний коммит.
 
----
+Конфиг nginx разложен на два файла:
 
-## 12. Резервные копии
-
-**База.** Автоматические бэкапы включены на стороне Managed PostgreSQL
-(кластер → «Резервные копии»). Дополнительный локальный дамп по расписанию:
+| Файл | Что внутри | Когда копировать |
+|---|---|---|
+| `deploy/mabl-lms-app.conf` | заголовки, маршруты, статика, SPA | при каждом изменении — безопасно |
+| `deploy/nginx-mabl-lms.conf` | `listen`, `server_name`, TLS от certbot | **никогда после установки** |
 
 ```bash
-sudo tee /etc/cron.daily/mabl-db-dump >/dev/null <<'SH'
-#!/bin/sh
-set -a; . /etc/mabl-lms.env; set +a
-mkdir -p /var/backups/mabl
-pg_dump "$DATABASE_URL" --format=custom \
-  --file="/var/backups/mabl/mabl-$(date +%F).dump"
-find /var/backups/mabl -name 'mabl-*.dump' -mtime +14 -delete
-SH
-sudo chmod +x /etc/cron.daily/mabl-db-dump
+sudo cp /srv/mabl-lms/deploy/mabl-lms-app.conf /etc/nginx/snippets/mabl-lms-app.conf
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
-**Файлы.** Object Storage хранит данные с тройной репликацией, но от ошибочного
-удаления это не спасает — включите версионирование бакета в консоли YC.
+Если TLS-секцию всё же затёрли — сертификат цел в `/etc/letsencrypt`. Верните
+`server_name course.mabl.ru;` и повторите `sudo certbot --nginx -d course.mabl.ru`,
+выбрав **«Attempt to reinstall this existing certificate»**.
+
+Изменились systemd-юниты в `deploy/` — повторите `sudo ./deploy/bootstrap.sh`:
+он переустановит юниты, не трогая env и nginx.
 
 ---
 
-## 13. Диагностика
+## 12. Диагностика
 
 | Симптом | Где смотреть | Обычная причина |
 |---|---|---|
 | 502 Bad Gateway | `journalctl -u mabl-lms -n 100` | сервис не запустился (ошибка в env) |
-| API отвечает «Не найдена строка подключения» | `/etc/mabl-lms.env` | пустой `DATABASE_URL` |
-| Запросы к БД висят | группа безопасности кластера | закрыт порт 6432 из подсети VM |
-| «Файловое хранилище не настроено» | `/etc/mabl-lms.env` | нет ключей `S3_*` |
-| SCORM: «Материалы недоступны» | `journalctl -u mabl-lms` | пакет не загружен в хранилище — перезалейте его через админку |
+| «Не найдена строка подключения» | `/etc/mabl-lms.env` | пустой `DATABASE_URL` |
+| `password authentication failed` | `DATABASE_URL` | пароль в env не совпадает с ролью `mabl` |
+| `ECONNREFUSED 127.0.0.1:5432` | `systemctl status postgresql` | PostgreSQL не запущен |
+| сборка убита, `Killed` в логе | `free -h`, `dmesg \| tail` | не хватило памяти — нужен swap |
+| SCORM: «Материалы недоступны» | `journalctl -u mabl-lms` | файлы пакета не восстановлены — перезалейте через админку |
 | 413 при загрузке файла | nginx `client_max_body_size`, `MAX_UPLOAD_MB` | лимит меньше размера файла |
-| Сессии слетели после переезда | `AUTH_SECRET` | секрет не совпал с прежним |
+| письма не уходят | админка → «Отправка писем» | исходящий SMTP закрыт провайдером |
+| сертификат не выпускается | `dig course.mabl.ru A/AAAA` | DNS ещё не переключён или висит старый AAAA |
+| сайт не открывается снаружи, локально ок | `sudo ufw status`, файрвол панели RelaxDEV | закрыты 80/443 |
 
 Полезные команды:
 
@@ -398,5 +410,5 @@ sudo systemctl restart mabl-lms          # перезапуск
 journalctl -u mabl-lms -f                # живые логи
 journalctl -u mabl-lms --since "1 hour ago" | grep -i error
 sudo tail -f /var/log/nginx/mabl-lms.error.log
-psql "$DATABASE_URL" -c "SELECT count(*) FROM content;"
+df -h / && du -sh /srv/mabl-lms/storage /var/backups/mabl
 ```
