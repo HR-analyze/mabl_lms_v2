@@ -68,6 +68,7 @@ import {
   putObject,
   storageEnvNames,
 } from './_storage.js'
+import { env, envNumber } from './_env.js'
 import type { StoredObject } from './_storage.js'
 import type {
   AdminUser,
@@ -200,14 +201,14 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       // проверка нужна именно тогда, когда вход сломан и токена не получить.
       const secretParam = typeof req.query.secret === 'string' ? req.query.secret : ''
       const bySecret =
-        Boolean(process.env.SETUP_SECRET) && secretParam === process.env.SETUP_SECRET
+        Boolean(env('SETUP_SECRET')) && secretParam === env('SETUP_SECRET')
       if (!bySecret && verifyToken(bearer(req))?.kind !== 'admin') {
         return res.status(403).json({ message: 'Нет доступа к диагностике.' })
       }
       return res.json({
-        authSecret: Boolean(process.env.AUTH_SECRET?.trim()),
-        database: Boolean(process.env.DATABASE_URL || process.env.POSTGRES_URL),
-        siteUrl: Boolean(process.env.SITE_URL),
+        authSecret: Boolean(env('AUTH_SECRET')?.trim()),
+        database: Boolean(env('DATABASE_URL') || env('POSTGRES_URL')),
+        siteUrl: Boolean(env('SITE_URL')),
         problems: [authSecretProblem()].filter(Boolean),
       })
     }
@@ -503,9 +504,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       const problems = mailConfigProblems()
       return res.json({
         transport: mailTransport(),
-        from: process.env.MAIL_FROM || process.env.SMTP_USER || null,
-        host: process.env.SMTP_HOST || null,
-        port: process.env.SMTP_HOST ? Number(process.env.SMTP_PORT || 465) : null,
+        from: env('MAIL_FROM') || env('SMTP_USER') || null,
+        host: env('SMTP_HOST') || null,
+        port: env('SMTP_HOST') ? envNumber('SMTP_PORT', 465) : null,
         configured: problems.length === 0,
         problems,
       })
@@ -714,7 +715,7 @@ async function allowNewsSync(
   req: ApiRequest,
   sql: ReturnType<typeof getSql>,
 ): Promise<{ ok: true } | { ok: false; deny: (res: ApiResponse) => unknown }> {
-  const cronSecret = process.env.CRON_SECRET?.trim()
+  const cronSecret = env('CRON_SECRET')?.trim()
   if (cronSecret) {
     if (bearer(req) === cronSecret || verifyToken(bearer(req))?.kind === 'admin') return { ok: true }
     return {
@@ -2033,7 +2034,7 @@ async function visibleCourses(courses: Course[], req: ApiRequest): Promise<Cours
  * академии со ссылкой на чужой домен, а переход по ней отдал бы токен сброса.
  */
 function siteOrigin(req: ApiRequest): string {
-  const configured = process.env.SITE_URL || process.env.YOOKASSA_RETURN_URL
+  const configured = env('SITE_URL') || env('YOOKASSA_RETURN_URL')
   if (configured) return configured.replace(/\/$/, '')
 
   const proto = (req.headers['x-forwarded-proto'] as string) || 'https'
@@ -2054,15 +2055,15 @@ function siteOrigin(req: ApiRequest): string {
  */
 function isTrustedHost(host: string): boolean {
   const bare = host.replace(/:\d+$/, '')
-  if (process.env.NODE_ENV !== 'production' && (bare === 'localhost' || bare === '127.0.0.1')) {
+  if (env('NODE_ENV') !== 'production' && (bare === 'localhost' || bare === '127.0.0.1')) {
     return true
   }
   const allowed = new Set(
     [
       // Канонический адрес сайта — тоже свой домен. Без него CORS отклонял бы
       // собственный фронтенд, если ALLOWED_HOSTS не задан.
-      process.env.SITE_URL,
-      ...(process.env.ALLOWED_HOSTS ?? '').split(','),
+      env('SITE_URL'),
+      ...(env('ALLOWED_HOSTS') ?? '').split(','),
     ]
       .map((v) => (v ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
       .filter(Boolean),
@@ -2204,7 +2205,7 @@ async function applyPaymentStatus(
         name: (users[0]?.name as string) || '',
         courseTitle: course.title,
         courseId: course.id,
-        origin: origin || process.env.SITE_URL || '',
+        origin: origin || env('SITE_URL') || '',
       })
       if (sent) next.accessEmailSentAt = new Date().toISOString()
     }
@@ -2825,7 +2826,7 @@ export async function serveStorageFile(key: string, req: ApiRequest, res: ApiRes
 }
 
 /** Потолок размера одного загружаемого файла (МБ). */
-const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 256)
+const MAX_UPLOAD_MB = envNumber('MAX_UPLOAD_MB', 256)
 
 /**
  * Что администратору сделать, чтобы хранилище заработало.

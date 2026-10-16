@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import pg from 'pg'
+import { env, envNumber } from './_env.js'
 
 /**
  * Подключение к PostgreSQL.
@@ -31,10 +32,10 @@ let pool: pg.Pool | undefined
 
 function connectionString(): string {
   const value =
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.POSTGRES_URL_NON_POOLING
+    env('DATABASE_URL') ||
+    env('POSTGRES_URL') ||
+    env('POSTGRES_PRISMA_URL') ||
+    env('POSTGRES_URL_NON_POOLING')
 
   if (!value) {
     throw new Error('Не найдена строка подключения к базе данных (DATABASE_URL / POSTGRES_URL)')
@@ -52,13 +53,13 @@ function connectionString(): string {
  * платформа, а база во внутренней сети TLS не поддерживает.
  */
 function sslConfig(url: string): pg.ClientConfig['ssl'] {
-  const flag = (process.env.DATABASE_SSL ?? '').trim().toLowerCase()
+  const flag = (env('DATABASE_SSL') ?? '').trim().toLowerCase()
   const disabled = /sslmode=disable/.test(url) || ['disable', 'false', 'off', '0'].includes(flag)
   if (disabled) return undefined
 
   const caFile =
-    process.env.DATABASE_CA_FILE ||
-    `${process.env.HOME ?? '/root'}/.postgresql/root.crt`
+    env('DATABASE_CA_FILE') ||
+    `${env('HOME') ?? '/root'}/.postgresql/root.crt`
 
   if (fs.existsSync(caFile)) {
     return { ca: fs.readFileSync(caFile, 'utf8'), rejectUnauthorized: true }
@@ -76,7 +77,7 @@ export function getPool(): pg.Pool {
     pool = new pg.Pool({
       connectionString: url,
       ssl: sslConfig(url),
-      max: Number(process.env.DATABASE_POOL_MAX ?? 10),
+      max: envNumber('DATABASE_POOL_MAX', 10),
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,
     })

@@ -11,6 +11,8 @@
  *   YOOKASSA_RETURN_URL   — (опц.) базовый URL для возврата после оплаты
  */
 
+import { env } from './_env.js'
+
 const API_BASE = 'https://api.yookassa.ru/v3'
 
 export interface YooKassaAmount {
@@ -30,12 +32,12 @@ export interface YooKassaPayment {
 
 /** Настроена ли интеграция (заданы ли оба ключа). */
 export function isYooKassaConfigured(): boolean {
-  return Boolean(process.env.YOOKASSA_SHOP_ID && process.env.YOOKASSA_SECRET_KEY)
+  return Boolean(env('YOOKASSA_SHOP_ID') && env('YOOKASSA_SECRET_KEY'))
 }
 
 function authHeader(): string {
-  const shopId = process.env.YOOKASSA_SHOP_ID || ''
-  const secret = process.env.YOOKASSA_SECRET_KEY || ''
+  const shopId = env('YOOKASSA_SHOP_ID') || ''
+  const secret = env('YOOKASSA_SECRET_KEY') || ''
   return 'Basic ' + Buffer.from(`${shopId}:${secret}`).toString('base64')
 }
 
