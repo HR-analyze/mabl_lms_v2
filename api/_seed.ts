@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs'
 import type { Sql } from './_db.js'
+import { env } from './_env.js'
 
 /**
  * Совместно используемая логика инициализации БД (схема + стартовый админ).
@@ -22,7 +23,7 @@ import type { Sql } from './_db.js'
 export const defaultAdmin = {
   id: 'u-adm',
   name: 'Администратор',
-  email: (process.env.ADMIN_EMAIL || 'admin@mabl.ru').trim().toLowerCase(),
+  email: (env('ADMIN_EMAIL') || 'admin@mabl.ru').trim().toLowerCase(),
   role: 'Администратор платформы',
   kind: 'admin',
 }
@@ -293,7 +294,7 @@ export interface InitResult {
 export async function initDatabase(sql: Sql): Promise<InitResult> {
   await ensureSchema(sql)
 
-  const envPassword = process.env.ADMIN_PASSWORD?.trim()
+  const envPassword = env('ADMIN_PASSWORD')?.trim()
   const password = envPassword || generatePassword()
   const hash = await bcrypt.hash(password, 10)
   const created = await sql`

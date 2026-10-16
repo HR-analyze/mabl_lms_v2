@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import type { ApiRequest, ApiResponse } from './_http.js'
+import { env } from './_env.js'
 
 /**
  * Простая аутентификация по подписанному токену (HMAC-SHA256), без внешних
@@ -40,7 +41,7 @@ let cachedSecret: string | undefined
 function secret(): string | undefined {
   if (cachedSecret) return cachedSecret
 
-  const configured = process.env.AUTH_SECRET?.trim()
+  const configured = env('AUTH_SECRET')?.trim()
   if (configured) {
     if (configured.length < RECOMMENDED_SECRET_LENGTH) {
       console.warn(
@@ -52,7 +53,7 @@ function secret(): string | undefined {
     return cachedSecret
   }
 
-  if (process.env.NODE_ENV === 'production') return undefined
+  if (env('NODE_ENV') === 'production') return undefined
 
   console.warn(
     '[auth] AUTH_SECRET не задан: вне продакшена используется случайный ключ на время процесса. ' +
@@ -207,14 +208,14 @@ export function sessionCookie(token: string): string {
     `Max-Age=${Math.floor(TTL_MS / 1000)}`,
   ]
   // Secure ломает локальную разработку по http, в проде обязателен.
-  if (process.env.NODE_ENV === 'production') attrs.push('Secure')
+  if (env('NODE_ENV') === 'production') attrs.push('Secure')
   return attrs.join('; ')
 }
 
 /** Значение Set-Cookie, стирающее сессию (выход). */
 export function clearSessionCookie(): string {
   const attrs = [`${SESSION_COOKIE}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0']
-  if (process.env.NODE_ENV === 'production') attrs.push('Secure')
+  if (env('NODE_ENV') === 'production') attrs.push('Secure')
   return attrs.join('; ')
 }
 

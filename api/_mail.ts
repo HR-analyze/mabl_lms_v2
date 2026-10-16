@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import { env, envNumber } from './_env.js'
 
 /**
  * Отправка писем с сервера.
@@ -37,8 +38,8 @@ export interface MailMessage {
 export type MailTransport = 'smtp' | 'resend' | 'none'
 
 export function mailTransport(): MailTransport {
-  if (process.env.SMTP_HOST) return 'smtp'
-  if (process.env.RESEND_API_KEY) return 'resend'
+  if (env('SMTP_HOST')) return 'smtp'
+  if (env('RESEND_API_KEY')) return 'resend'
   return 'none'
 }
 
@@ -48,7 +49,7 @@ export function isMailConfigured(): boolean {
 
 /** Адрес отправителя. */
 function mailFrom(): string {
-  return (process.env.MAIL_FROM || process.env.SMTP_USER || '').trim()
+  return (env('MAIL_FROM') || env('SMTP_USER') || '').trim()
 }
 
 /**
@@ -63,8 +64,8 @@ export function mailConfigProblems(): string[] {
     return problems
   }
   if (transport === 'smtp') {
-    if (!process.env.SMTP_USER) problems.push('Не задан SMTP_USER (логин почтового ящика).')
-    if (!process.env.SMTP_PASSWORD) problems.push('Не задан SMTP_PASSWORD (пароль ящика или пароль приложения).')
+    if (!env('SMTP_USER')) problems.push('Не задан SMTP_USER (логин почтового ящика).')
+    if (!env('SMTP_PASSWORD')) problems.push('Не задан SMTP_PASSWORD (пароль ящика или пароль приложения).')
   }
   if (!mailFrom()) problems.push('Не задан MAIL_FROM (адрес отправителя).')
   return problems
@@ -72,18 +73,19 @@ export function mailConfigProblems(): string[] {
 
 /** Отправка через SMTP. */
 async function sendViaSmtp(message: MailMessage): Promise<void> {
-  const port = Number(process.env.SMTP_PORT || 465)
-  const secure = process.env.SMTP_SECURE
-    ? process.env.SMTP_SECURE.toLowerCase() === 'true'
+  const port = envNumber('SMTP_PORT', 465)
+  const secureFlag = env('SMTP_SECURE')
+  const secure = secureFlag
+    ? secureFlag.toLowerCase() === 'true'
     : port === 465
 
   const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
+    host: env('SMTP_HOST'),
     port,
     secure,
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASSWORD,
+      user: env('SMTP_USER'),
+      pass: env('SMTP_PASSWORD'),
     },
     // Serverless-функция живёт недолго: не ждём зависший SMTP дольше запроса.
     connectionTimeout: 10_000,
@@ -105,7 +107,7 @@ async function sendViaResend(message: MailMessage): Promise<void> {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      Authorization: `Bearer ${env('RESEND_API_KEY')}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({

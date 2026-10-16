@@ -1,6 +1,7 @@
 import type { Sql } from './_db.js'
 import type { NewsItem } from '../src/types/index.js'
 import { ensureSchema } from './_seed.js'
+import { env } from './_env.js'
 
 /**
  * Импорт новостей из публичного Telegram-канала.
@@ -37,7 +38,7 @@ export function normalizeChannel(raw: string): string {
 
 /** Возвращает имя канала из окружения или бросает понятную ошибку. */
 export function getChannel(): string {
-  const raw = process.env.TELEGRAM_CHANNEL
+  const raw = env('TELEGRAM_CHANNEL')
   if (!raw || !normalizeChannel(raw)) {
     throw new Error(
       'Не задана переменная окружения TELEGRAM_CHANNEL (публичный @username канала).',

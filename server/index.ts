@@ -4,7 +4,9 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import apiHandler, { serveStorageFile } from '../api/router.js'
 import setupHandler from '../api/setup.js'
 import { closePool } from '../api/_db.js'
+import { storageDescription } from '../api/_storage.js'
 import type { ApiRequest, ApiResponse } from '../api/_http.js'
+import { env, envNumber } from '../api/_env.js'
 
 /**
  * HTTP-сервер приложения.
@@ -25,10 +27,10 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 // уровня выше; при запуске из исходников (tsx) — на один.
 const projectRoot = path.resolve(here, here.includes('dist-server') ? '../..' : '..')
 
-const PORT = Number(process.env.PORT ?? 3000)
-const HOST = process.env.HOST ?? '127.0.0.1'
-const STATIC_DIR = path.resolve(projectRoot, process.env.STATIC_DIR ?? 'dist')
-const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 256)
+const PORT = envNumber('PORT', 3000)
+const HOST = env('HOST') ?? '127.0.0.1'
+const STATIC_DIR = path.resolve(projectRoot, env('STATIC_DIR') ?? 'dist')
+const MAX_UPLOAD_MB = envNumber('MAX_UPLOAD_MB', 256)
 
 /** Пути, тело которых — сырые байты файла, а не JSON. */
 const UPLOAD_PATHS = new Set(['/scorm/upload', '/materials/upload'])
@@ -124,8 +126,33 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ message })
 })
 
+/**
+ * Сводка настроек в лог при старте — чтобы по логам хостинга сразу было видно,
+ * что приложение получило на самом деле. Значения секретов не печатаются:
+ * только «задан»/«НЕТ», а у базы — хост без логина и пароля.
+ */
+function logConfig() {
+  const set = (name: string) => (env(name) ? 'задан' : 'НЕТ')
+  const dbUrl = env('DATABASE_URL') || env('POSTGRES_URL')
+  let db = 'НЕТ'
+  if (dbUrl) {
+    try {
+      db = new URL(dbUrl).host || 'задан'
+    } catch {
+      db = 'задан, но это не URL'
+    }
+  }
+  const mail = env('SMTP_HOST') ? `SMTP ${env('SMTP_HOST')}` : env('RESEND_API_KEY') ? 'Resend' : 'НЕТ'
+  console.log(
+    `[config] БД: ${db}; AUTH_SECRET: ${set('AUTH_SECRET')}; SITE_URL: ${env('SITE_URL') ?? 'НЕТ'}; ` +
+      `файлы: ${storageDescription()}; почта: ${mail}; ЮKassa: ${set('YOOKASSA_SHOP_ID')}; ` +
+      `CRON_SECRET: ${set('CRON_SECRET')}; SETUP_SECRET: ${set('SETUP_SECRET')}`,
+  )
+}
+
 const server = app.listen(PORT, HOST, () => {
   console.log(`[server] МАБЛ LMS слушает http://${HOST}:${PORT} (статика: ${STATIC_DIR})`)
+  logConfig()
 })
 
 /** Аккуратная остановка: дослужить текущие запросы и закрыть пул соединений. */

@@ -10,6 +10,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
+import { env } from './_env.js'
 
 /**
  * Файловое хранилище: файлы SCORM-пакетов и материалов.
@@ -52,7 +53,7 @@ export type StorageBackend = 'disk' | 's3'
  * бессмысленно, а его отсутствие однозначно означает «храним на диске».
  */
 export function storageBackend(): StorageBackend {
-  return process.env.S3_BUCKET ? 's3' : 'disk'
+  return env('S3_BUCKET') ? 's3' : 'disk'
 }
 
 /**
@@ -64,7 +65,7 @@ export function storageBackend(): StorageBackend {
  * месте — задайте STORAGE_DIR.
  */
 function diskRoot(): string {
-  return path.resolve(process.env.STORAGE_DIR || path.join(process.cwd(), 'storage'))
+  return path.resolve(env('STORAGE_DIR') || path.join(process.cwd(), 'storage'))
 }
 
 /**
@@ -109,16 +110,16 @@ async function readDiskMeta(key: string): Promise<string | undefined> {
 }
 
 function accessKeyId(): string | undefined {
-  return process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID
+  return env('S3_ACCESS_KEY_ID') || env('AWS_ACCESS_KEY_ID')
 }
 
 function secretAccessKey(): string | undefined {
-  return process.env.S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY
+  return env('S3_SECRET_ACCESS_KEY') || env('AWS_SECRET_ACCESS_KEY')
 }
 
 /** Имя бакета; бросает понятную ошибку, если хранилище не настроено. */
 export function bucket(): string {
-  const name = process.env.S3_BUCKET
+  const name = env('S3_BUCKET')
   if (!name) throw new Error('Не задан S3_BUCKET — хранилище файлов не настроено')
   return name
 }
@@ -131,12 +132,12 @@ export function bucket(): string {
  */
 export function isStorageConfigured(): boolean {
   if (storageBackend() === 'disk') return true
-  return Boolean(process.env.S3_BUCKET && accessKeyId() && secretAccessKey())
+  return Boolean(env('S3_BUCKET') && accessKeyId() && secretAccessKey())
 }
 
 /** Человекочитаемое описание хранилища — для диагностики в админке. */
 export function storageDescription(): string {
-  return storageBackend() === 'disk' ? `диск ВМ (${diskRoot()})` : `Object Storage (${process.env.S3_BUCKET})`
+  return storageBackend() === 'disk' ? `диск (${diskRoot()})` : `Object Storage (${env('S3_BUCKET')})`
 }
 
 /** Какие переменные хранилища видит процесс (без значений) — для диагностики. */
@@ -152,8 +153,8 @@ function s3(): S3Client {
       throw new Error('Не заданы ключи доступа к хранилищу (S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY)')
     }
     client = new S3Client({
-      region: process.env.S3_REGION || DEFAULT_REGION,
-      endpoint: process.env.S3_ENDPOINT || DEFAULT_ENDPOINT,
+      region: env('S3_REGION') || DEFAULT_REGION,
+      endpoint: env('S3_ENDPOINT') || DEFAULT_ENDPOINT,
       // Object Storage Яндекса работает по path-style адресации.
       forcePathStyle: true,
       credentials: { accessKeyId: id, secretAccessKey: secret },

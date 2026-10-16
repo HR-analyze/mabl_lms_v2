@@ -1,6 +1,7 @@
 import type { ApiRequest, ApiResponse } from './_http.js'
 import { getSql } from './_db.js'
 import { initDatabase } from './_seed.js'
+import { env } from './_env.js'
 
 /**
  * Одноразовая инициализация базы данных.
@@ -18,7 +19,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   const secret = req.query.secret as string | undefined
-  if (!process.env.SETUP_SECRET || secret !== process.env.SETUP_SECRET) {
+  if (!env('SETUP_SECRET') || secret !== env('SETUP_SECRET')) {
     return res.status(403).json({ error: 'Forbidden' })
   }
 
