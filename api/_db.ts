@@ -30,17 +30,61 @@ export interface Sql {
 
 let pool: pg.Pool | undefined
 
-function connectionString(): string {
-  const value =
-    env('DATABASE_URL') ||
-    env('POSTGRES_URL') ||
-    env('POSTGRES_PRISMA_URL') ||
-    env('POSTGRES_URL_NON_POOLING')
+/** Имена переменных со строкой подключения — в порядке приоритета. */
+const URL_VARS = [
+  'DATABASE_URL',
+  'POSTGRES_URL',
+  'POSTGRESQL_URL',
+  'PG_URL',
+  'POSTGRES_PRISMA_URL',
+  'POSTGRES_URL_NON_POOLING',
+]
 
-  if (!value) {
-    throw new Error('Не найдена строка подключения к базе данных (DATABASE_URL / POSTGRES_URL)')
+/**
+ * Откуда взять подключение к БД: строка подключения под одним из
+ * распространённых имён или стандартный набор libpq (PGHOST, PGPORT, PGUSER,
+ * PGPASSWORD, PGDATABASE) — его выдают многие хостинги вместо единой строки.
+ */
+export function databaseUrlSource(): { url: string; from: string } | undefined {
+  for (const name of URL_VARS) {
+    const value = env(name)
+    if (value) return { url: value, from: name }
   }
-  return value
+  const host = env('PGHOST')
+  const user = env('PGUSER')
+  if (host && user) {
+    const password = env('PGPASSWORD') ?? ''
+    const port = env('PGPORT') ?? '5432'
+    const database = env('PGDATABASE') ?? user
+    const auth = `${encodeURIComponent(user)}:${encodeURIComponent(password)}`
+    const query = env('PGSSLMODE') ? `?sslmode=${encodeURIComponent(env('PGSSLMODE') as string)}` : ''
+    return {
+      url: `postgresql://${auth}@${host}:${port}/${encodeURIComponent(database)}${query}`,
+      from: 'PGHOST/PGUSER/...',
+    }
+  }
+  return undefined
+}
+
+/**
+ * Имена (без значений) переменных, похожих на настройки БД, — для диагностики,
+ * когда подключение не найдено: видно, под каким именем его выдал хостинг.
+ */
+export function databaseEnvNames(): string[] {
+  return Object.keys(process.env)
+    .filter((k) => /DATABASE|POSTGRES|^PG|^DB_|_DB_|MYSQL/i.test(k))
+    .filter((k) => env(k) !== undefined)
+    .sort()
+}
+
+function connectionString(): string {
+  const source = databaseUrlSource()
+  if (!source) {
+    throw new Error(
+      `Не найдена строка подключения к базе данных (${URL_VARS.join(' / ')} или PGHOST + PGUSER)`,
+    )
+  }
+  return source.url
 }
 
 /**
