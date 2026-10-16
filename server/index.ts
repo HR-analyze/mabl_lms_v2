@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import apiHandler, { serveStorageFile } from '../api/router.js'
 import setupHandler from '../api/setup.js'
-import { closePool } from '../api/_db.js'
+import { closePool, databaseEnvNames, databaseUrlSource } from '../api/_db.js'
 import { storageDescription } from '../api/_storage.js'
 import type { ApiRequest, ApiResponse } from '../api/_http.js'
 import { env, envNumber } from '../api/_env.js'
@@ -133,14 +133,19 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
  */
 function logConfig() {
   const set = (name: string) => (env(name) ? 'задан' : 'НЕТ')
-  const dbUrl = env('DATABASE_URL') || env('POSTGRES_URL')
-  let db = 'НЕТ'
-  if (dbUrl) {
+  const source = databaseUrlSource()
+  let db: string
+  if (source) {
     try {
-      db = new URL(dbUrl).host || 'задан'
+      db = `${new URL(source.url).host || 'задан'} (из ${source.from})`
     } catch {
-      db = 'задан, но это не URL'
+      db = `задан в ${source.from}, но это не URL`
     }
+  } else {
+    // Подключения нет — показываем, какие похожие переменные вообще пришли
+    // (только имена): так видно, под каким именем хостинг выдал базу.
+    const names = databaseEnvNames()
+    db = names.length ? `НЕТ (есть похожие переменные: ${names.join(', ')})` : 'НЕТ (похожих переменных нет)'
   }
   const mail = env('SMTP_HOST') ? `SMTP ${env('SMTP_HOST')}` : env('RESEND_API_KEY') ? 'Resend' : 'НЕТ'
   console.log(

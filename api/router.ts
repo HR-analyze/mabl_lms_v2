@@ -3,7 +3,7 @@ import crypto from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcryptjs'
-import { getSql } from './_db.js'
+import { databaseUrlSource, getSql } from './_db.js'
 import type { SqlRow } from './_db.js'
 import { mailConfigProblems, mailTransport, passwordResetMessage, sendMail } from './_mail.js'
 import {
@@ -207,7 +207,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       }
       return res.json({
         authSecret: Boolean(env('AUTH_SECRET')?.trim()),
-        database: Boolean(env('DATABASE_URL') || env('POSTGRES_URL')),
+        database: Boolean(databaseUrlSource()),
         siteUrl: Boolean(env('SITE_URL')),
         problems: [authSecretProblem()].filter(Boolean),
       })
