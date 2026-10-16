@@ -43,12 +43,17 @@ function connectionString(): string {
 }
 
 /**
- * Настройки TLS. Managed PostgreSQL Яндекса требует шифрования и своего
- * корневого сертификата: он кладётся на VM и указывается в DATABASE_CA_FILE
- * (по умолчанию ~/.postgresql/root.crt — стандартный путь из документации YC).
+ * Настройки TLS. Управляемые кластеры требуют шифрования и своего корневого
+ * сертификата: он кладётся на машину и указывается в DATABASE_CA_FILE
+ * (по умолчанию ~/.postgresql/root.crt).
+ *
+ * TLS выключается `sslmode=disable` в строке подключения или
+ * `DATABASE_SSL=disable` — второе нужно на PaaS, где DATABASE_URL подставляет
+ * платформа, а база во внутренней сети TLS не поддерживает.
  */
 function sslConfig(url: string): pg.ClientConfig['ssl'] {
-  const disabled = /sslmode=disable/.test(url)
+  const flag = (process.env.DATABASE_SSL ?? '').trim().toLowerCase()
+  const disabled = /sslmode=disable/.test(url) || ['disable', 'false', 'off', '0'].includes(flag)
   if (disabled) return undefined
 
   const caFile =
