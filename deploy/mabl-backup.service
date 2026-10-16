@@ -1,0 +1,17 @@
+# Разовое резервное копирование: дамп БД + архив файлов (deploy/backup.sh).
+# Расписание задаёт mabl-backup.timer.
+
+[Unit]
+Description=MABL LMS: резервная копия БД и файлов
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+# DATABASE_URL, STORAGE_DIR и BACKUP_* — из того же файла, что у приложения.
+# systemd разбирает его сам: `. /etc/mabl-lms.env` в shell ломается на
+# значениях с пробелами и угловыми скобками (MAIL_FROM).
+EnvironmentFile=/etc/mabl-lms.env
+ExecStart=/srv/mabl-lms/deploy/backup.sh
+Nice=10
+IOSchedulingClass=idle
+SyslogIdentifier=mabl-backup

@@ -1,16 +1,17 @@
 # systemd-юнит приложения МАБЛ LMS.
 #
-# Установка:
-#   sudo cp deploy/mabl-lms.service /etc/systemd/system/
+# Установка — deploy/bootstrap.sh: он подставляет в User/Group пользователя,
+# под которым ставился сервис. Вручную:
+#   sudo cp deploy/mabl-lms.service /etc/systemd/system/   # и поправить User/Group
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now mabl-lms
 #
 # Логи:  journalctl -u mabl-lms -f
 
 [Unit]
-Description=MABL LMS (Node.js + PostgreSQL + Object Storage)
+Description=MABL LMS (Node.js + PostgreSQL)
 Documentation=https://github.com/HR-analyze/mabl_lms_v2
-After=network-online.target
+After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
