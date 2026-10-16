@@ -1,0 +1,18 @@
+# Контекст сборки Docker. Сюда — только то, что НЕ должно попасть в образ:
+# остальное (исходники, scorm-packages, public, package*.json) нужно сборке.
+# Строки `*` или `.` здесь быть не должно: они оставляют контекст пустым, и
+# `COPY . .` ничего не копирует.
+.git
+node_modules
+dist
+dist-ssr
+dist-server
+storage
+*.log
+*.local
+.env
+.env.*
+!.env.example
+.vite
+.DS_Store
+*.tsbuildinfo

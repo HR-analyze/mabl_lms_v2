@@ -14,8 +14,8 @@ TypeScript. Визуальная айдентика строго по бренд
 - **Бэкенд:** Node.js + Express (`server/index.ts` + маршруты `api/*`),
   PostgreSQL и файлы на диске машины (опционально — S3-совместимое
   хранилище); весь контент создаётся из админ-панели и хранится в БД
-- **Хостинг:** VM RelaxDEV, nginx перед приложением, установка одним
-  скриптом `deploy/bootstrap.sh` — см. [DEPLOY.md](DEPLOY.md)
+- **Хостинг:** PaaS RelaxDEV — образ собирается по `Dockerfile`; запасной
+  вариант — своя VM с nginx и `deploy/bootstrap.sh`. См. [DEPLOY.md](DEPLOY.md)
 
 ## Быстрый старт
 
@@ -291,6 +291,7 @@ cd /srv/mabl-lms && ./deploy/deploy.sh main
 |------------|------------|
 | `DATABASE_URL` | Подключение к PostgreSQL (обязательно) |
 | `DATABASE_CA_FILE` | Корневой сертификат провайдера для TLS-подключения к внешней БД (для локальной не нужен) |
+| `DATABASE_SSL` | `disable` — подключаться к БД без TLS (PaaS, где `DATABASE_URL` задаёт платформа) |
 | `STORAGE_DIR` | Каталог файлов SCORM и материалов на диске машины (по умолчанию `storage` рядом с приложением) |
 | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Необязательны: переключают хранение файлов с диска на Object Storage |
 | `S3_ENDPOINT`, `S3_REGION` | Адрес и регион хранилища (по умолчанию Яндекс, `ru-central1`) |
