@@ -126,6 +126,10 @@ export function ScormPlayer({
   onPersist,
 }: ScormPlayerProps) {
   const [running, setRunning] = useState(false)
+  // Загрузился ли документ пакета во фрейме. Плеер тянет несколько мегабайт
+  // скриптов, и пока они идут, фрейм пустой: без подписи это выглядит как
+  // сломанный курс, и человек уходит, не дождавшись запуска.
+  const [frameLoaded, setFrameLoaded] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -247,6 +251,11 @@ export function ScormPlayer({
     }
   }, [storageKey, studentId, studentName, stateReady])
 
+  // Новый сеанс или другой пакет — фрейм грузится заново.
+  useEffect(() => {
+    setFrameLoaded(false)
+  }, [src, running])
+
   useEffect(() => {
     const onChange = () => setIsFullscreen(document.fullscreenElement === wrapRef.current)
     document.addEventListener('fullscreenchange', onChange)
@@ -289,15 +298,22 @@ export function ScormPlayer({
         </div>
       </div>
       <div className={cn('relative w-full bg-[#444c54]', isFullscreen ? 'flex-1' : 'aspect-video')}>
-        {running ? (
+        {running && (
           <iframe
             src={src}
             title={title}
             className="absolute inset-0 h-full w-full"
             allow="fullscreen; autoplay"
             allowFullScreen
+            onLoad={() => setFrameLoaded(true)}
           />
-        ) : (
+        )}
+        {running && !frameLoaded && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-wisdom/60">
+            Загружаем курс…
+          </div>
+        )}
+        {!running && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-wisdom/60">
             Загружаем ваш прогресс…
           </div>
