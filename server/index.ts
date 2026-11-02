@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express, { type NextFunction, type Request, type Response } from 'express'
+import compression from 'compression'
 import apiHandler, { serveStorageFile } from '../api/router.js'
 import setupHandler from '../api/setup.js'
 import { closePool, databaseEnvNames, databaseUrlSource } from '../api/_db.js'
@@ -39,6 +40,18 @@ const app = express()
 // За nginx: доверяем X-Forwarded-* (нужно для корректного протокола в ссылках).
 app.set('trust proxy', true)
 app.disable('x-powered-by')
+
+// Сжатие ответов. Без него старт SCORM-плеера тянул ~4,5 МБ скриптов, стилей и
+// данных как есть, и при отдаче платформы около 270 КБ/с курс открывался
+// секунд за 15–20: человек видел серый прямоугольник и уходил. В gzip те же
+// файлы весят ~1,1 МБ. Сжимаются только текстовые типы (фильтр compression по
+// умолчанию), картинки и видео идут как есть. Запросы с Range пропускаем: часть
+// сжатого потока по байтовому диапазону не соответствовала бы Content-Range.
+app.use(
+  compression({
+    filter: (req, res) => !req.headers.range && compression.filter(req, res),
+  }),
+)
 
 const rawUpload = express.raw({ type: () => true, limit: `${MAX_UPLOAD_MB}mb` })
 const jsonBody = express.json({ limit: '5mb' })

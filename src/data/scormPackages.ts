@@ -56,6 +56,18 @@ export const repoScormPackages: RepoScormPackage[] = [
     launch: 'res/index.html',
     fileCount: 51,
   },
+  {
+    id: 'ot-zaprosa-k-rezultatu-obucheniya',
+    title: 'От запроса к результату обучения',
+    launch: 'res/index.html',
+    fileCount: 68,
+  },
+  {
+    id: 'neyrobiologiya-sistemnogo-myshleniya',
+    title: 'Нейробиология системного мышления для лидеров',
+    launch: 'res/index.html',
+    fileCount: 71,
+  },
 ]
 
 /**
