@@ -58,6 +58,7 @@ import {
 import {
   deleteKeys,
   getObject,
+  headObject,
   isStorageConfigured,
   storageBackend,
   storageDescription,
@@ -2740,6 +2741,8 @@ function repoScormRoot(): string {
  * `scorm-packages/` под латинскими id; здесь старый id направляется на них,
  * чтобы курсы заработали без перепривязки уроков и без хранилища.
  *
+ * Это запасной путь: если пакет с таким id снова лежит в хранилище (админ
+ * перезалил его — замена сохраняет id), отдаётся загруженная версия.
  * Доступ по-прежнему проверяется по исходному id (`scormAccess`) — меняется
  * только место, откуда читаются файлы.
  */
@@ -2750,12 +2753,22 @@ const REPO_SCORM_ALIASES: Record<string, string> = {
   'реальная-себестоимость-и-операционные-из': 'realnaya-sebestoimost-restorana',
 }
 
-/** Каталог пакета в репозитории для id из ссылки (с учётом старых id). */
-function repoScormDir(id: string): string {
+/** Каталог копии в репозитории для старого id пакета, если она есть. */
+function repoScormAlias(id: string): string | undefined {
   // Кириллица в адресе может прийти в NFD (й = и + ˘) — приводим к NFC,
   // в котором записаны ключи таблицы.
-  const normalized = id.normalize('NFC')
-  return REPO_SCORM_ALIASES[normalized] ?? id
+  return REPO_SCORM_ALIASES[id.normalize('NFC')]
+}
+
+/**
+ * Лежит ли пакет в хранилище. Признак — его imsmanifest.xml: без манифеста
+ * загрузка пакет не принимает, и он всегда в корне пакета. Решение принимается
+ * для пакета целиком, а не для файла, чтобы не смешать файлы перезалитой
+ * версии с файлами копии из репозитория.
+ */
+async function scormPackageStored(id: string): Promise<boolean> {
+  if (!isStorageConfigured()) return false
+  return (await headObject(scormKey(id, 'imsmanifest.xml'))) !== null
 }
 
 /**
@@ -2768,7 +2781,7 @@ async function streamRepoScormFile(
   req: ApiRequest,
   res: ApiResponse,
 ): Promise<boolean> {
-  const root = path.join(repoScormRoot(), repoScormDir(id))
+  const root = path.join(repoScormRoot(), id)
   const full = path.resolve(root, rel)
   // Страховка на случай, если проверка сегментов выше когда-нибудь ослабнет.
   if (!full.startsWith(root + path.sep)) return false
@@ -2812,6 +2825,13 @@ async function serveScormFile(id: string, rel: string, req: ApiRequest, res: Api
   // поэтому ищем сначала там: так они работают даже когда Object Storage не
   // настроено, и при этом остаются за проверкой доступа выше.
   if (await streamRepoScormFile(id, rel, req, res)) return
+
+  // Пакет со старым id, пропавший из хранилища, — отдаём его копию из
+  // репозитория (см. REPO_SCORM_ALIASES).
+  const alias = repoScormAlias(id)
+  if (alias && !(await scormPackageStored(id))) {
+    if (await streamRepoScormFile(alias, rel, req, res)) return
+  }
 
   if (!isStorageConfigured()) {
     return scormErrorPage(res, `Файловое хранилище не настроено. Администратору: ${storageSetupHint()}`)
