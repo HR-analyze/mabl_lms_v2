@@ -2730,6 +2730,35 @@ function repoScormRoot(): string {
 }
 
 /**
+ * Пакеты, загруженные когда-то через админку, и их копии в репозитории.
+ *
+ * Курсы ссылаются на пакет по id, присвоенному при загрузке (кириллица,
+ * обрезанная до 40 символов). Файлы таких пакетов лежали в STORAGE_DIR внутри
+ * контейнера, а он без постоянного диска очищается при каждом деплое — после
+ * деплоя 02.11 курсы показывали «Материалы курса временно недоступны». Те же
+ * выгрузки (совпадают вплоть до имён файлов в res/data) лежат в
+ * `scorm-packages/` под латинскими id; здесь старый id направляется на них,
+ * чтобы курсы заработали без перепривязки уроков и без хранилища.
+ *
+ * Доступ по-прежнему проверяется по исходному id (`scormAccess`) — меняется
+ * только место, откуда читаются файлы.
+ */
+const REPO_SCORM_ALIASES: Record<string, string> = {
+  'когнитивистика-и-развитие-мышления': 'kognitivistika-i-razvitie-myshleniya',
+  'нейробиология-системного-мышления-для-ли': 'neyrobiologiya-sistemnogo-myshleniya',
+  'от-запроса-к-результату-обучения': 'ot-zaprosa-k-rezultatu-obucheniya',
+  'реальная-себестоимость-и-операционные-из': 'realnaya-sebestoimost-restorana',
+}
+
+/** Каталог пакета в репозитории для id из ссылки (с учётом старых id). */
+function repoScormDir(id: string): string {
+  // Кириллица в адресе может прийти в NFD (й = и + ˘) — приводим к NFC,
+  // в котором записаны ключи таблицы.
+  const normalized = id.normalize('NFC')
+  return REPO_SCORM_ALIASES[normalized] ?? id
+}
+
+/**
  * Отдать файл пакета, лежащего в репозитории. Возвращает false, если такого
  * пакета или файла нет, — тогда вызывающий ищет его в хранилище.
  */
@@ -2739,7 +2768,7 @@ async function streamRepoScormFile(
   req: ApiRequest,
   res: ApiResponse,
 ): Promise<boolean> {
-  const root = path.join(repoScormRoot(), id)
+  const root = path.join(repoScormRoot(), repoScormDir(id))
   const full = path.resolve(root, rel)
   // Страховка на случай, если проверка сегментов выше когда-нибудь ослабнет.
   if (!full.startsWith(root + path.sep)) return false
