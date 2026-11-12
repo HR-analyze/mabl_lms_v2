@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react'
 import { api, ApiError } from '@/api'
 import { useAuth } from '@/context/AuthContext'
+import { useCourses } from '@/context/CoursesContext'
 import { isFree } from '@/lib/utils'
 import type { Course } from '@/types'
 
@@ -104,6 +105,18 @@ export function PurchaseProvider({ children }: { children: ReactNode }) {
     if (restoring) return
     void refreshAccess()
   }, [refreshAccess, restoring])
+
+  // Доступ изменился (оплата, выдача администратором) — каталог надо
+  // перечитать: ссылки запуска уроков сервер кладёт только в открытые
+  // программы, и без этого после оплаты плеер оставался пустым до перезагрузки.
+  const { refresh: refreshCourses } = useCourses()
+  const ownedKey = [...ownedCourseIds].sort().join(',')
+  const lastOwnedKey = useRef(ownedKey)
+  useEffect(() => {
+    if (ownedKey === lastOwnedKey.current) return
+    lastOwnedKey.current = ownedKey
+    void refreshCourses().catch(() => undefined)
+  }, [ownedKey, refreshCourses])
 
   // Записи на события — локальные и привязаны к пользователю.
   useEffect(() => {
