@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Crest } from '@/components/brand/Crest'
 import { Check, ArrowRight } from '@/components/ui/Icon'
 import { ApplicationForm } from '@/components/ApplicationForm'
+import { FeedbackWidget } from '@/components/FeedbackWidget'
 import { getProgramById } from '@/data/programs'
 import type { ProgramModule } from '@/types'
 
@@ -358,6 +359,18 @@ export default function ProgramDetailPage() {
               </p>
             )}
           </div>
+        </Container>
+      </section>
+
+      {/* ---------- ОБРАТНАЯ СВЯЗЬ ---------- */}
+      <section id="feedback" className="scroll-mt-36">
+        <Container className="pb-8">
+          <FeedbackWidget
+            targetType="program"
+            targetId={program.id}
+            title={`Оцените программу «${program.title}»`}
+            className="mx-auto max-w-3xl"
+          />
         </Container>
       </section>
     </div>

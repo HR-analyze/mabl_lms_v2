@@ -274,6 +274,26 @@ export async function ensureSchema(sql: Sql): Promise<void> {
     )
   `
   await sql`CREATE INDEX IF NOT EXISTS idx_course_grants_course ON course_grants (course_id)`
+
+  // Обратная связь по программам и курсам: оценка 1–5 и необязательный текст.
+  //
+  // Одна строка на слушателя и объект: повторная отправка правит прежний
+  // отзыв, а не плодит новые, иначе один человек мог бы накрутить среднюю
+  // оценку. target_type различает курсы из БД ('course') и программы-лендинги
+  // из src/data/programs.ts ('program'): их id лежат в разных пространствах.
+  await sql`
+    CREATE TABLE IF NOT EXISTS feedback (
+      target_type TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      rating SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      comment TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (target_type, target_id, user_id)
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS idx_feedback_updated ON feedback (updated_at DESC)`
 }
 
 /** Инициализация: схема + стартовый администратор (без перезаписи существующих данных). */

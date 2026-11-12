@@ -8,6 +8,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Crest } from '@/components/brand/Crest'
 import { Book, Check, Clipboard, Lock, Play } from '@/components/ui/Icon'
 import { ScormPlayer } from '@/components/ScormPlayer'
+import { FeedbackWidget } from '@/components/FeedbackWidget'
 import type { ScormStatus } from '@/components/ScormPlayer'
 import { useCourses } from '@/context/CoursesContext'
 import { useProgress } from '@/context/ProgressContext'
@@ -328,6 +329,11 @@ export default function CourseDetailPage() {
                 ))}
               </div>
             </section>
+
+            {/* Обратная связь — тем, кому курс открыт (проверяет и сервер). */}
+            {owned && (
+              <FeedbackWidget targetType="course" targetId={course.id} title="Оцените курс" />
+            )}
           </div>
 
           {/* Боковая колонка */}

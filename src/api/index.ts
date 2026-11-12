@@ -14,6 +14,7 @@ import { notificationsApi } from './notifications'
 import { scormApi } from './scorm'
 import { databaseApi } from './database'
 import { paymentsApi } from './payments'
+import { feedbackApi } from './feedback'
 
 /**
  * Единая точка доступа к данным приложения.
@@ -38,8 +39,10 @@ export const api = {
   scorm: scormApi,
   database: databaseApi,
   payments: paymentsApi,
+  feedback: feedbackApi,
 }
 
 export { API_URL, ApiError } from './config'
 export type { ScormPackage, ScormDiagnostics } from './scorm'
 export type { ApplicationDraft } from './applications'
+export type { Feedback, FeedbackEntry, FeedbackTarget, MyFeedback } from './feedback'

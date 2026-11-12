@@ -32,6 +32,7 @@ import AdminOverviewPage from './pages/admin/AdminOverviewPage'
 import AdminCoursesPage from './pages/admin/AdminCoursesPage'
 import AdminCourseEditPage from './pages/admin/AdminCourseEditPage'
 import AdminScormPage from './pages/admin/AdminScormPage'
+import AdminFeedbackPage from './pages/admin/AdminFeedbackPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminUserEditPage from './pages/admin/AdminUserEditPage'
 import AdminOrdersPage from './pages/admin/AdminOrdersPage'
@@ -117,6 +118,7 @@ export default function App() {
           <Route path="/admin/orders/new" element={<AdminOrderEditPage />} />
           <Route path="/admin/orders/:id" element={<AdminOrderEditPage />} />
           <Route path="/admin/applications" element={<AdminApplicationsPage />} />
+          <Route path="/admin/feedback" element={<AdminFeedbackPage />} />
           <Route path="/admin/events" element={<AdminEventsPage />} />
           <Route path="/admin/events/new" element={<AdminEventEditPage />} />
           <Route path="/admin/events/:id" element={<AdminEventEditPage />} />

@@ -181,6 +181,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     // обработчика по токену сессии из заголовка Authorization. Админский гард
     // здесь неуместен — иначе обучение не сможет сохранить ни один слушатель.
     (segments[0] === 'me' && segments[1] === 'progress') ||
+    // Отзыв о программе оставляет сам слушатель: вход и доступ к курсу
+    // проверяются внутри обработчика по токену сессии.
+    segments[0] === 'feedback' ||
     (segments[0] === 'news' && (segments[2] === 'comments' || segments[2] === 'reactions'))
   // Гард смотрит на собранный путь, а не на segments[0]: так он совпадает
   // ровно с тем значением, по которому маршруты выбираются ниже, и не может
@@ -301,6 +304,12 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     }
     if (segments[0] === 'me' && segments[1] === 'progress' && segments.length === 4) {
       if (method === 'PUT') return await saveLessonProgress(segments[2], segments[3], req, res)
+    }
+
+    // ---------- ОБРАТНАЯ СВЯЗЬ (оценка 1–5 + текст) ----------
+    if (segments[0] === 'feedback' && segments.length === 3) {
+      if (method === 'GET') return await getMyFeedback(segments[1], segments[2], req, res)
+      if (method === 'PUT') return await saveFeedback(segments[1], segments[2], req, res)
     }
 
     // ---------- COURSES (БД) ----------
@@ -585,6 +594,14 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     if (segments[0] === 'scorm' && segments.length === 2 && method === 'DELETE') {
       await deleteScormPackage(segments[1])
       return res.status(204).end()
+    }
+
+    // ---------- ADMIN · ОБРАТНАЯ СВЯЗЬ ----------
+    if (path === 'admin/feedback' && method === 'GET') {
+      return await listFeedback(res)
+    }
+    if (segments[0] === 'admin' && segments[1] === 'feedback' && segments.length === 5 && method === 'DELETE') {
+      return await deleteFeedback(segments[2], segments[3], segments[4], res)
     }
 
     // ---------- ADMIN · ВЫДАННЫЙ ДОСТУП ----------
@@ -1652,6 +1669,156 @@ async function accessibleCourseIdsFor(userId: string): Promise<string[]> {
   const ids = Array.from(new Set(rows.map((r) => r.course_id as string).filter(Boolean)))
   accessCache.set(userId, { expires: Date.now() + ACCESS_TTL_MS, ids })
   return ids
+}
+
+// ---------------- обратная связь ----------------
+
+type FeedbackTarget = 'course' | 'program'
+
+const FEEDBACK_COMMENT_MAX = 2000
+const FEEDBACK_MAX_PER_HOUR = 30
+
+function parseFeedbackTarget(raw: string): FeedbackTarget | null {
+  return raw === 'course' || raw === 'program' ? raw : null
+}
+
+/**
+ * id программы-лендинга сервер сверить не может: программы живут во
+ * фронтенде (src/data/programs.ts). Поэтому хотя бы держим формат слага —
+ * иначе в таблицу можно было бы писать отзывы о произвольных строках.
+ */
+const PROGRAM_ID_RE = /^[a-z0-9][a-z0-9-]{0,79}$/
+
+/**
+ * Можно ли этому аккаунту оценивать объект. Курс — только при открытом
+ * доступе (оплата, выдача или бесплатный курс): оценка от того, кто курс не
+ * видел, ничего не стоит. Администратор видит всё, поэтому тоже может.
+ */
+async function feedbackAllowed(
+  type: FeedbackTarget,
+  targetId: string,
+  account: { id: string; kind: string },
+): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
+  if (type === 'program') {
+    return PROGRAM_ID_RE.test(targetId)
+      ? { ok: true }
+      : { ok: false, status: 404, message: 'Программа не найдена' }
+  }
+  const course = await getCourse(targetId)
+  if (!course) return { ok: false, status: 404, message: 'Курс не найден' }
+  if (account.kind === 'admin' || isFreeCourse(course)) return { ok: true }
+  const owned = await accessibleCourseIdsFor(account.id)
+  return owned.includes(targetId)
+    ? { ok: true }
+    : { ok: false, status: 403, message: 'Оценить курс можно после того, как он станет вам доступен.' }
+}
+
+function rowToFeedback(row: SqlRow) {
+  return {
+    targetType: row.target_type as FeedbackTarget,
+    targetId: row.target_id as string,
+    userId: row.user_id as string,
+    rating: Number(row.rating),
+    comment: (row.comment as string) ?? '',
+    createdAt: new Date(row.created_at as string | Date).toISOString(),
+    updatedAt: new Date(row.updated_at as string | Date).toISOString(),
+  }
+}
+
+/** GET /api/feedback/:type/:id — свой отзыв (чтобы показать и дать поправить). */
+async function getMyFeedback(rawType: string, targetId: string, req: ApiRequest, res: ApiResponse) {
+  const type = parseFeedbackTarget(rawType)
+  if (!type) return res.status(404).json({ message: 'Неизвестный тип объекта' })
+  const account = studentSession(req, res)
+  if (!account) return
+  const allowed = await feedbackAllowed(type, targetId, account)
+  const sql = getSql()
+  await ensureSchema(sql)
+  const rows = await sql`
+    SELECT target_type, target_id, user_id, rating, comment, created_at, updated_at FROM feedback
+    WHERE target_type = ${type} AND target_id = ${targetId} AND user_id = ${account.id}
+    LIMIT 1
+  `
+  return res.json({
+    canRate: allowed.ok,
+    ...(allowed.ok ? {} : { reason: allowed.message }),
+    mine: rows[0] ? rowToFeedback(rows[0]) : null,
+  })
+}
+
+/** PUT /api/feedback/:type/:id — оставить или поправить свой отзыв. */
+async function saveFeedback(rawType: string, targetId: string, req: ApiRequest, res: ApiResponse) {
+  const type = parseFeedbackTarget(rawType)
+  if (!type) return res.status(404).json({ message: 'Неизвестный тип объекта' })
+  const account = studentSession(req, res)
+  if (!account) return
+
+  const body = parseBody(req)
+  const rating = Number(body.rating)
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return res.status(400).json({ message: 'Поставьте оценку от 1 до 5.' })
+  }
+  const comment = String(body.comment ?? '').trim()
+  if (comment.length > FEEDBACK_COMMENT_MAX) {
+    return res
+      .status(400)
+      .json({ message: `Слишком длинный отзыв (макс. ${FEEDBACK_COMMENT_MAX} символов).` })
+  }
+
+  const allowed = await feedbackAllowed(type, targetId, account)
+  if (!allowed.ok) return res.status(allowed.status).json({ message: allowed.message })
+
+  const sql = getSql()
+  await ensureSchema(sql)
+  const limit = await hitRateLimit(sql, 'feedback', account.id, FEEDBACK_MAX_PER_HOUR, 60 * 60)
+  if (!limit.allowed) return tooManyRequests(res, limit, 'Слишком много отзывов подряд. Попробуйте позже.')
+
+  const exists = await sql`SELECT 1 FROM users WHERE id = ${account.id} LIMIT 1`
+  if (!exists[0]) return res.status(401).json({ message: 'Аккаунт не найден. Войдите заново.' })
+
+  const rows = await sql`
+    INSERT INTO feedback (target_type, target_id, user_id, rating, comment)
+    VALUES (${type}, ${targetId}, ${account.id}, ${rating}, ${comment})
+    ON CONFLICT (target_type, target_id, user_id) DO UPDATE SET
+      rating = EXCLUDED.rating,
+      comment = EXCLUDED.comment,
+      updated_at = NOW()
+    RETURNING target_type, target_id, user_id, rating, comment, created_at, updated_at
+  `
+  return res.json(rowToFeedback(rows[0]))
+}
+
+/** GET /api/admin/feedback — все отзывы с именем и почтой автора. */
+async function listFeedback(res: ApiResponse) {
+  const sql = getSql()
+  await ensureSchema(sql)
+  const rows = await sql`
+    SELECT f.target_type, f.target_id, f.user_id, f.rating, f.comment, f.created_at, f.updated_at,
+           u.name AS user_name, u.email AS user_email
+    FROM feedback f
+    LEFT JOIN users u ON u.id = f.user_id
+    ORDER BY f.updated_at DESC
+  `
+  return res.json({
+    feedback: rows.map((r) => ({
+      ...rowToFeedback(r),
+      userName: (r.user_name as string | null) ?? null,
+      userEmail: (r.user_email as string | null) ?? null,
+    })),
+  })
+}
+
+/** DELETE /api/admin/feedback/:type/:id/:userId — убрать отзыв (спам, ошибка). */
+async function deleteFeedback(rawType: string, targetId: string, userId: string, res: ApiResponse) {
+  const type = parseFeedbackTarget(rawType)
+  if (!type) return res.status(404).json({ message: 'Неизвестный тип объекта' })
+  const sql = getSql()
+  await ensureSchema(sql)
+  await sql`
+    DELETE FROM feedback
+    WHERE target_type = ${type} AND target_id = ${targetId} AND user_id = ${userId}
+  `
+  return res.status(204).end()
 }
 
 // ---------------- выданный доступ ----------------
