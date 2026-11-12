@@ -2759,7 +2759,9 @@ async function diagnoseScormPackage(id: string) {
   const started = Date.now()
   const report = {
     id,
-    mode: isStorageConfigured() ? (storageBackend() === 'disk' ? 'диск ВМ' : 'object-storage') : 'none',
+    mode: isStorageConfigured()
+      ? ({ disk: 'диск ВМ', s3: 'object-storage', relax: 'relaxdev-storage' } as const)[storageBackend()]
+      : 'none',
     storage: storageDescription(),
     fileCount: 0,
     okCount: 0,

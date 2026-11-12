@@ -11,6 +11,16 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3'
 import { env } from './_env.js'
+import {
+  isRelaxConfigured,
+  relaxDelete,
+  relaxDescription,
+  relaxGet,
+  relaxHead,
+  relaxList,
+  relaxPut,
+  setRelaxCacheRoot,
+} from './_relaxStorage.js'
 
 /**
  * Файловое хранилище: файлы SCORM-пакетов и материалов.
@@ -27,6 +37,9 @@ import { env } from './_env.js'
  *    равно наше приложение.
  * 2. S3 (Yandex Object Storage), если задан S3_BUCKET. Нужен, когда машин
  *    несколько или файлы должны пережить пересоздание ВМ.
+ * 3. RelaxDEV Storage API, если задан STORAGE_API_KEY (и не задан S3_BUCKET).
+ *    Для хостинга на RelaxDEV: постоянных дисков там нет, контейнер стирается
+ *    при каждом деплое. Подробности — api/_relaxStorage.ts.
  *
  * Переменные окружения:
  *   STORAGE_DIR           — каталог на диске (по умолчанию <рабочий каталог>/storage)
@@ -35,6 +48,7 @@ import { env } from './_env.js'
  *   S3_REGION             — ru-central1 (по умолчанию)
  *   S3_ACCESS_KEY_ID      — статический ключ сервисного аккаунта
  *   S3_SECRET_ACCESS_KEY  — секрет этого ключа
+ *   STORAGE_API_KEY       — ключ RelaxDEV Storage API (платформа задаёт сама)
  *
  * Переключение бэкенда файлы НЕ переносит: после перехода пакеты нужно залить
  * заново через админку.
@@ -46,14 +60,16 @@ const DEFAULT_REGION = 'ru-central1'
 let client: S3Client | undefined
 
 /** Где лежат файлы: на диске этой машины или в S3-совместимом хранилище. */
-export type StorageBackend = 'disk' | 's3'
+export type StorageBackend = 'disk' | 's3' | 'relax'
 
 /**
- * Выбранный бэкенд. Признак — заданный S3_BUCKET: имя бакета без хранилища
- * бессмысленно, а его отсутствие однозначно означает «храним на диске».
+ * Выбранный бэкенд. S3_BUCKET — явный выбор S3; иначе STORAGE_API_KEY —
+ * хранилище RelaxDEV; иначе диск.
  */
 export function storageBackend(): StorageBackend {
-  return env('S3_BUCKET') ? 's3' : 'disk'
+  if (env('S3_BUCKET')) return 's3'
+  if (isRelaxConfigured()) return 'relax'
+  return 'disk'
 }
 
 /**
@@ -131,18 +147,23 @@ export function bucket(): string {
  * S3 без ключей неработоспособен, поэтому там проверяем их наличие.
  */
 export function isStorageConfigured(): boolean {
-  if (storageBackend() === 'disk') return true
+  const backend = storageBackend()
+  if (backend === 'disk' || backend === 'relax') return true
   return Boolean(env('S3_BUCKET') && accessKeyId() && secretAccessKey())
 }
 
 /** Человекочитаемое описание хранилища — для диагностики в админке. */
 export function storageDescription(): string {
-  return storageBackend() === 'disk' ? `диск (${diskRoot()})` : `Object Storage (${env('S3_BUCKET')})`
+  const backend = storageBackend()
+  if (backend === 'relax') return relaxDescription()
+  return backend === 'disk' ? `диск (${diskRoot()})` : `Object Storage (${env('S3_BUCKET')})`
 }
 
 /** Какие переменные хранилища видит процесс (без значений) — для диагностики. */
 export function storageEnvNames(): string[] {
-  return Object.keys(process.env).filter((k) => k.startsWith('S3_') || k.startsWith('AWS_'))
+  return Object.keys(process.env).filter(
+    (k) => k.startsWith('S3_') || k.startsWith('AWS_') || k.startsWith('STORAGE_'),
+  )
 }
 
 function s3(): S3Client {
@@ -177,6 +198,7 @@ export async function putObject(
     await writeDiskMeta(key, type)
     return
   }
+  if (storageBackend() === 'relax') return await relaxPut(key, body, type)
   await s3().send(
     new PutObjectCommand({ Bucket: bucket(), Key: key, Body: body, ContentType: type }),
   )
@@ -266,6 +288,11 @@ export async function getObject(key: string, range?: string): Promise<StoredObje
     const file = diskPathFor(key, 'objects')
     return await getLocalObject(file, range, await readDiskMeta(key))
   }
+  if (storageBackend() === 'relax') {
+    // Кэш скачанных файлов — на диске контейнера; его потеря не страшна.
+    setRelaxCacheRoot(path.join(diskRoot(), 'relax-cache'))
+    return await relaxGet(key, range, getLocalObject)
+  }
 
   const out = await s3().send(
     new GetObjectCommand({ Bucket: bucket(), Key: key, Range: range }),
@@ -287,6 +314,7 @@ export async function headObject(key: string): Promise<{ size: number; contentTy
       if (!stat.isFile()) return null
       return { size: stat.size, contentType: await readDiskMeta(key) }
     }
+    if (storageBackend() === 'relax') return await relaxHead(key)
     const out = await s3().send(new HeadObjectCommand({ Bucket: bucket(), Key: key }))
     return { size: out.ContentLength ?? 0, contentType: out.ContentType }
   } catch {
@@ -334,6 +362,7 @@ export async function listKeys(prefix: string): Promise<Array<{ key: string; siz
     }
     return result
   }
+  if (storageBackend() === 'relax') return await relaxList(prefix)
 
   let token: string | undefined
   do {
@@ -360,6 +389,7 @@ export async function deleteKeys(keys: string[]): Promise<void> {
     await pruneEmptyDirs(path.join(diskRoot(), 'meta'))
     return
   }
+  if (storageBackend() === 'relax') return await relaxDelete(keys)
 
   for (let i = 0; i < keys.length; i += 1000) {
     const chunk = keys.slice(i, i + 1000)
